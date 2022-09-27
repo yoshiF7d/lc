@@ -315,7 +315,7 @@ class STDT():
 			
 		self.makeintp()
 
-	def checkParams(self,count):
+	def checkParams(self,count,xlim,ylim):
 		fig,ax = plt.subplots()
 		for data in self.data:
 			x = data[:,0]
@@ -323,6 +323,11 @@ class STDT():
 			xi = range(len(x))
 			ax.plot(x,y,'r',alpha=0.5)
 		
+		if xlim is not None:
+			ax.set_xlim(xlim)
+		if ylim is not None:
+			ax.set_ylim(ylim)
+
 		clist = ['b','g','c','m','y','k']
 		
 		for i,pp in enumerate(self.params):
@@ -557,6 +562,12 @@ def tryint(s):
 def alnum_key(s):
 	return [tryint(c) for c in re.split('([0-9]+)',s)]
 
+def parselim(limstr):
+	l0,l1 = limstr.split(",")
+	l0 = l0.lstrip('([').lstrip()
+	l1 = l1.rstrip(')]').rstrip()
+	return [float(l0),float(l1)]
+
 parser = argparse.ArgumentParser(description='LC processor')
 parser.add_argument('filein',nargs='?',help='Input file or directory')
 parser.add_argument('fileout',nargs='?',help='Output file')
@@ -568,10 +579,16 @@ parser.add_argument('--checkParams',action='store_const',const=10,help='check pa
 parser.add_argument('--checkStandards',action='store_true',help='check standards data (Standard file is required)')
 parser.add_argument('--header',default=HEADER,help='header name to query in a datafile')
 parser.add_argument('--noBLE',default=False,action='store_true',help='no baseline estimation')
+parser.add_argument('--xlim',help='x region of plot')
+parser.add_argument('--ylim',help='y region of plot')
+parser.add_argument('--label',help='show chemical species label',action='store_true')
 
 stdt = STDT()
-
 args = parser.parse_args()
+if args.xlim is not None:
+	args.xlim = parselim(args.xlim)
+if args.ylim is not None:
+	args.ylim = parselim(args.ylim)
 
 if args.stdFile is not None:
 	stdt.load(args.stdFile,args.noBLE)
@@ -580,7 +597,7 @@ if args.stdFile is not None:
 	if args.paramFile is not None:
 		stdt.saveParams(args.paramFile)
 	if args.checkParams:
-		stdt.checkParams(int(args.checkParams))
+		stdt.checkParams(int(args.checkParams),args.xlim,args.ylim)
 		exit()
 	if args.checkStandards:
 		stdt.checkStandards()
@@ -594,7 +611,24 @@ elif args.paramFile is not None:
 		stdt.plotParams(args.plotParamsDir)
 		exit()
 else:
-	print('stdFile or paramFile is required')
+	lcdata = LCData(args.filein)
+	data = lcdata.query(args.header)
+	if args.noBLE:
+		data[:,1] -= baselineMedian(data[:,1])
+	else:
+		data[:,1] -= baseline(data[:,1])
+	
+	x = data[:,0]
+	y = data[:,1]
+
+	fig,ax = plt.subplots()
+	ax.plot(x,y,'r')
+	if args.xlim is not None:
+		ax.set_xlim(args.xlim)
+	if args.ylim is not None:
+		ax.set_ylim(args.ylim)
+	plt.show()
+	#print('stdFile or paramFile is required')
 	exit()	
 
 if args.filein is not None:
@@ -625,7 +659,19 @@ if args.filein is not None:
 					x = data[:,0]
 					y = data[:,1]
 					ax.plot(x,y,'r')
+					if args.xlim is not None:
+						ax.set_xlim(args.xlim)
+					if args.ylim is not None:
+						ax.set_ylim(args.ylim)
+					
 					cout = stdt.eval(data,ax)
+					
+					if args.label is not None:
+						for i,pp in enumerate(stdt.params):
+							p = stdt.intp(i,cout[i])
+							ind = np.floor(p[0]).astype(int)
+							ax.text(x[ind],p[1],pp[0][0])
+
 					fig.savefig(os.path.join(args.plotDir,os.path.splitext(os.path.basename(file))[0]+'.png'))
 					plt.close(fig)	
 				else:
@@ -657,7 +703,16 @@ if args.filein is not None:
 	
 		fig,ax = plt.subplots()
 		ax.plot(x,y,'r')
+		if args.xlim is not None:
+			ax.set_xlim(args.xlim)
+		if args.ylim is not None:
+			ax.set_ylim(args.ylim)
 		cout=stdt.eval(data,ax)
+		if args.label is not None:
+			for i,pp in enumerate(stdt.params):
+				p = stdt.intp(i,cout[i])
+				ind = np.floor(p[0]).astype(int)
+				ax.text(x[ind],p[1],pp[0][0])
 		print()
 		res = [['file']+[p[0][0] for p in stdt.params]]
 		res.append([os.path.basename(args.filein)]+list(cout))
