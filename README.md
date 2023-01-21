@@ -44,6 +44,19 @@ STD.csv:
 |Ethanol|30|15|7.5|3.75|1.875|
 |n-Buthanol|30|15|7.5|3.75|1.875|
 
+またこのファイルにピーク位置の情報を含めることができます。この場合、入力されたピーク位置に近いピークを検出します。
+
+STD.csv (ピーク位置の情報を含める場合):
+|   | STD1.txt | STD2.txt | STD3.txt | STD4.txt | STD5.txt |Peak position (.txt で終わらない文字列。空欄でもよい)| 
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|Maleic Acid|50|25|12.5|6.25|3.125|9.3|
+|Glucose|100|50|25|12.5|6.25|10|
+|Xylose|50|25|12.5|6.25|3.125|10.6|
+|Glycerol|50|25|12.5|6.25|3.125|14|
+|Acetic Acid|50|25|12.5|6.25|3.125|15.05|
+|Ethanol|30|15|7.5|3.75|1.875|21.63|
+|n-Buthanol|30|15|7.5|3.75|1.875|33.8|
+
 ### パラメータファイルの作成
 パラメータファイルの名前を`Params.csv`とします。以下のコマンドを実行します。`--checkParams` オプションをつけると、フィッティングの結果が表示されます。
 
@@ -147,6 +160,20 @@ STD.csv:
 |Acetic Acid|50|25|12.5|6.25|3.125|
 |Ethanol|30|15|7.5|3.75|1.875|
 |n-Buthanol|30|15|7.5|3.75|1.875|
+
+You can also include peak position information in this file. In this case, it detects peaks closest to the input peak position.
+
+STD.csv (When including peak position information):
+
+|   | STD1.txt | STD2.txt | STD3.txt | STD4.txt | STD5.txt |Peak position (strings that do not end with .txt, can be blank)| 
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|Maleic Acid|50|25|12.5|6.25|3.125|9.3|
+|Glucose|100|50|25|12.5|6.25|10|
+|Xylose|50|25|12.5|6.25|3.125|10.6|
+|Glycerol|50|25|12.5|6.25|3.125|14|
+|Acetic Acid|50|25|12.5|6.25|3.125|15.05|
+|Ethanol|30|15|7.5|3.75|1.875|21.63|
+|n-Buthanol|30|15|7.5|3.75|1.875|33.8|
 
 ### Create a parameter file
 The parameter file name is set to `Params.csv` in this example. Run the following command. If you add the option `--checkParams`, the fitting results will be displayed.
