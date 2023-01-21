@@ -1,113 +1,207 @@
-1:python をインストールする
-powershellを立ち上げ、pythonと打つ
+# lc.py
 
-2:moduleをインストールする
+https://user-images.githubusercontent.com/31358974/213721453-248d3e7c-7fbf-4894-94cf-74ec46ad2ee7.mp4
+
+## 概要
+HPLCの解析プログラムです。このプログラムは、ピークの高さや面積ではなく、形から濃度を推定します。このため、濃度によるピーク位置や形状の変化に対して耐性があります。
+
+## 入力ファイル
+ShimazuのLabSolutionsのASCII出力ファイルを扱います。違うデータ形式を扱う場合は、LCData.pyを書き換える必要があります。
+
+## インストール
+### pythonのインストール
+powershellを立ち上げ、pythonと打つ。
+
+### python module のインストール
+powershellで以下のコマンドを入力する。
+v
+### ソースファイルの配置
+ソースファイルを powershellを始めに立ち上げて、pwdと入力したときに表示されるフォルダに置きます。PATHの通し方などわかる人はその必要はありません。
+
+## プログラムの使用
+解析の流れは以下のようになります。
+まず標準試料のデータ`STD.csv`から、ピーク形状と濃度の関係モデルを作成し、パラメータファイル`Params.csv`を出力します。そのあと、このモデルを用いて未知試料のデータに対してフィッティングをかけ、化合物の濃度をもとめます。
+
+ファイル名の入力はドラッグアンドドロップを使ってもできます。
+<details><summary>ドラッグアンドドロップによるファイル名の入力方法</summary>
+
+https://user-images.githubusercontent.com/31358974/213726092-c3425de8-421a-4ee7-993b-e3e9744586ea.mp4
+  
+</details>
+
+
+### 標準サンプルの情報が入ったcsvファイルを作る
+以下の例のようなCSVファイルを作ります。グラフの左から順番にあらわれるピークに対応する化合物の情報を表の上から順番に書きます。`STD1.txt` などの標準試料のデータは `STD.csv` と同じフォルダに入れていおいてください。
+
+STD.csv:
+|   | STD1.txt | STD2.txt | STD3.txt | STD4.txt | STD5.txt |
+|:-:|:-:|:-:|:-:|:-:|:-:|
+|Maleic Acid|50|25|12.5|6.25|3.125|
+|Glucose|100|50|25|12.5|6.25|
+|Xylose|50|25|12.5|6.25|3.125|
+|Glycerol|50|25|12.5|6.25|3.125|
+|Acetic Acid|50|25|12.5|6.25|3.125|
+|Ethanol|30|15|7.5|3.75|1.875|
+|n-Buthanol|30|15|7.5|3.75|1.875|
+
+### パラメータファイルの作成
+パラメータファイルの名前を`Params.csv`とします。以下のコマンドを実行します。`--checkParams` オプションをつけると、フィッティングの結果が表示されます。
+
+```
+python lc.py -s 'STD.csv' -p 'Params.csv' --checkParams
+```
+
+### シングルデータの分析
+```
+python lc.py -p 'Params.csv' 'data.txt'
+```
+### 複数データの分析
+`data` が複数のデータファイルが入っているフォルダとします。
+```
+python lc.py -p 'Params.csv' 'data'
+```
+#### フィッティングの結果がみたい場合
+`--plotDir` オプションに出力フォルダ名を指定してください。
+```
+python lc.py -p 'Params.csv' 'data' --plotDir 'plot'
+```
+#### 結果をファイルに出力したい場合
+```
+python lc.py -p 'Params.csv' 'data' -o 'out.csv'
+```
+
+## その他のオプション
+
+### 使用するディテクターを指定する
+デフォルトでは`LC Chromatogram(Detector B-Ch1)`のデータを使います。
+ディテクターA1やA2を使いたい場合、以下のようにしてください。
+```
+python lc.py -p 'Params.csv' 'data' --header 'A1'
+```
+### ベースライン推定
+デフォルトではベースライン推定がオンになっており、下図のようにベースラインの変動が除去されてからデータ処理されます。
+<img src="https://user-images.githubusercontent.com/31358974/213746956-54c0d5dd-c634-4714-a49c-2e275324562d.png" alt="baseline" width="600"/>
+これをオフにする場合`--noBaselineCorrection`オプションをつけてください。
+
+### ピーク検出のパラメータ
+* `--peakProminence` は検出するピークの高さの閾値を設定します。デフォルトは 1.0 です。 
+* `--peakWidth` は検出するピークの幅の閾値を設定します。デフォルトは 15 です。
+* `--peakInclude` は検出するピーク位置を含む範囲を設定します。デフォルトはすべての範囲を検出します。
+範囲 [tmin1,tmax1],[tmin2,tmax2],...を含めるとき `--peakInclude '[[tmin1,tmax1],[tmin2,tmax2],...]'` のように入力します。
+* `--peakExclude` は検出するピーク位置から除外する範囲を設定します。
+
+### グラフ描画のオプション
+* `--xlim` は描画するグラフのx範囲を設定します。`--xlim '[xmin,xmax]'` のように入力します。
+* `--ylim` は描画するグラフのy範囲を設定します。
+
+### モデル関数とパラメータファイルについて
+このプログラムは歪ガウシアン関数を用いてピークをモデル化します。歪ガウシアン関数は以下の式で表せます。
+```math
+f(x) = \textrm{ph}\cdot\left(1+\textrm{erf}\left(\textrm{sk}\cdot\frac{x-x_0}{w}\right)\right)\cdot e^{-(x-x_0)^2/w^2}
+```
+ここで各変数の意味は以下のようになります。
+
+|||
+|---|---|
+|x0|ピーク位置|
+|ph|ピーク高さ|
+|w|ピーク幅|
+|sk|ピーク歪み|
+
+パラメータファイルにはこれらの情報が保存されます。
+
+## Overview
+This is a program for analyzing HPLC. This program estimates the concentration not by peak height or area, but by shape. Therefore, it is resistant to changes in peak position and shape due to concentration.
+
+## File format
+This program handles ASCII output files from Shimazu's LabSolutions. If you want to handle a different data format, you will need to modify LCData.py.
+
+## Installation
+### Install Python
+Open powershell and type 'python'
+### Install Python modules
+In powershell, input the following commands:
+```
 pip install numpy
 pip install matplotlib
 pip install scipy
 pip install tabulate
+```
+### Place source files
+Place the source files in the folder diplayed when you enter 'pwd' in powershell at the start. If you know how to set the PATH, this is not necessary.
 
-3:lc.pyを powershellを始めに立ち上げて、pwdと入力したときに表示されるフォルダに置く
+## Using the Program
+The analysis process is as follows:
+First, create a peak shape and concentration relationship model from the standard sample data `STD.csv`, and output a parameter file `Params.csv`. Then, use this model to fit the unknown sample data and determine the concentration of the compounds.
 
-4：標準サンプルの情報が入ったcsvファイルを作る
-以下のように作る。STD1.txtなどは、STD.csvと同じフォルダにおく。左から順番にあらわれるピークをに対応する化合物の情報を上から順番に書く。
-STD.csv:
-,STD1.txt,STD2.txt,STD3.txt,STD4.txt,STD5.txt
-Maleic Acid,10,5,2.5,1.25,0.625
-Glucose,100,50,25,12.5,6.25
-Xylose,50,25,12.5,6.25,3.125
-
-5-7 これからファイル名をpowershellに入力するときは、エクスプローラーでファイルをクリックして、powershell上にドラッグアンドドロップするとファイル名のフルネームが入力されるので便利（このとき""は必要)
-
-5：パラメータファイルを作成する。パラメータファイルを　Params.csv　とする。
-python lc.py -s "STD.csv" -p "Params.csv" --checkParams
-
-6-1：1データを分析する。data.txt　はLabSolutionsからASCII出力として出力したファイル
-python lc.py -p "Params.csv" "data.txt"
-
-6-2：複数データを分析する。data はデータが入ってるディレクトリ
-python lc.py -p "Params.csv" "data"
-
-6-3：複数データを分析する。フォルダ　plot　にフィッティングの結果をplotする
-python lc.py -p "Params.csv" "data" --plotDir "plot"
-
-6-3：複数データを分析する。ファイル　out.csv　に結果を出力する
-python lc.py -p "Params.csv" "data" "out.csv"
-
-デフォルトではディテクターBのデータを取得する。Aを使うときはlc.pyの
-HEADER = "LC Chromatogram(Detector B-Ch1)"
-を
-HEADER = "LC Chromatogram(Detector A-Ch2)"
-などにする。
-
-#ベースライン推定がおかしい場合 
---noBLE オプションをつける。
-
-#ピークの位置、面積、高さから検量線を作成する場合
-以下のようなパラメータでParam.csvファイルを編集する。
-x0 : ピーク位置
-ph : ピーク高さ
-w : 面積 / (ph * √π)
-sk : 0 
-
-
-######################################################################################################################################################
-
-1:install python
-launch powershell type 'python'
-
-2:insall modules
-pip install numpy
-pip install matplotlib
-pip install scipy
-pip install tabulate
-
-3:place lc.py on the home directory which is a folder shown by typing 'pwd' when you initially launch powershell
-
-4:make a csv file that specifies information of standard samples.
-place STD1.txt STD2.txt etc on the same folder as where STD.csv is.
-The peaks of chemical species appear from left to right on the plot. That order correspond to the order in the STD.csv from top to the
-bottom.
-
-example:
+### Create a CSV file with information about the standard sample
+Create a CSV file like the following example. Write the information about the compounds corresponding to the peaks that appear in order from left to right on the graph, in order from top to bottom of the table. Please put the standard sample data such as `STD1.txt` in the same folder as `STD.csv`
 
 STD.csv:
-,STD1.txt,STD2.txt,STD3.txt,STD4.txt,STD5.txt
-Maleic Acid,10,5,2.5,1.25,0.625
-Glucose,100,50,25,12.5,6.25
-Xylose,50,25,12.5,6.25,3.125
+|   | STD1.txt | STD2.txt | STD3.txt | STD4.txt | STD5.txt |
+|:-:|:-:|:-:|:-:|:-:|:-:|
+|Maleic Acid|50|25|12.5|6.25|3.125|
+|Glucose|100|50|25|12.5|6.25|
+|Xylose|50|25|12.5|6.25|3.125|
+|Glycerol|50|25|12.5|6.25|3.125|
+|Acetic Acid|50|25|12.5|6.25|3.125|
+|Ethanol|30|15|7.5|3.75|1.875|
+|n-Buthanol|30|15|7.5|3.75|1.875|
 
-5 when you type filename on powershell, you can instead find that file in explorer, then drag and drop that file on the powershell.
-(you still need to type "")
+### Create a parameter file
+The parameter file name is set to `Params.csv` in this example. Run the following command. If you add the option `--checkParams`, the fitting results will be displayed.
+```
+python lc.py -s 'STD.csv' -p 'Params.csv' --checkParams
+```
 
-5：Make parameter file.
-python lc.py -s "STD.csv" -p "Params.csv" --checkParams
+### Analyze a single data
+'data' is a folder with multiple data files.
+```
+python lc.py -p 'Params.csv' 'data'
+```
+If you want to see the fitting results. Specify the output folder name with the '--plotDir' option
+```
+python lc.py -p 'Params.csv' 'data' --plotDIr 'plot'
+```
+If you want to output the results to a file
+```
+python lc.py -p 'Params.csv' 'data' -o 'out.csv'
+```
 
-6-A：analyse single data. "data.txt" is a ASCII file exported from LabSolutions 
-python lc.py -p "Params.csv" "data.txt"
+## Other options
 
-6-B：analyse multiple data. "data" is a folder that files are in
-python lc.py -p "Params.csv" "data"
+### Specifying the detector to use
+By default, data from the `LC Chromatogram (Detector B-Ch1)` is used. If you would like to use Detector A1 or A2, please do so as follows.
+```
+python lc.py -p 'Params.csv' 'data' --header 'A1'
+```
+### Baseline estimation
+By default, baseline estimation is turned on, and the data is processed after the variation of the baseline is removed. To turn this off, please use the `--noBaselineCorrection` option.
 
-6-C：analyse multile data. Plot the result of fitting on folder "plot"
-python lc.py -p "Params.csv" "data" --plotDir "plot"
+### Peak detection parameters
+* `--peakProminence` sets the threshold for the height of the peak to be detecte. The default is 1.0.
+* `--peakWidth` sets the threshold for the width of the peak to be detected. The default is 15.
+*  `--peakInclude` sets the range of peak position to be included. The default is to detect all ranges.
+To include ranges [tmin1,tmax1],[tmin2,tmax2],..., input `--peakInclude '[[tmin1,tmax1],[tmin2,tmax2],...]'`.
+*  `--peakExclude` sets the range of peak position to be excluded.
 
-6-D：analyse multiple data. Output result on csv file
-python lc.py -p "Params.csv" "data" "out.csv"
+### Graph drawing options
+* `--xlim` sets the x range of the graph to be drawn. Input as  `--xlim '[xmin,xmax]'`.
+* `--ylim` sets the y range of the graph to be drawn.
+* 
 
-By default this program use detector B signal. when you use A
-change the line on lc.py
-HEADER = "LC Chromatogram(Detector B-Ch1)"
-to
-HEADER = "LC Chromatogram(Detector A-Ch2)"
+### About model function and parameter file
+This program models peaks using a skewed Gaussian function. The skewed Gaussian function can be represented by the following quation.
+```math
+f(x) = \textrm{ph}\cdot\left(1+\textrm{erf}\left(\textrm{sk}\cdot\frac{x-x_0}{w}\right)\right)\cdot e^{-(x-x_0)^2/w^2}
+```
+Here, the meaning of each variable is as follows:
 
-#when baseline estimation is erroneous.
-use --noBLE option
+|||
+|---|---|
+|x0|Peak position|
+|ph|Peak height|
+|w|Peak width|
+|sk|Peak skew|
 
-#when you want to add a chemical specie whose peak position,peak height,peak area are known.
-Add the chemical specie to the Param.csv file as below
-x0 : peak position
-ph : peak height
-w : (peak area) / (ph * sqrt(pi))
-sk : 0 
-
+This information is saved in the parameter file.
