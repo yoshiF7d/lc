@@ -14,7 +14,12 @@ powershellを立ち上げ、pythonと打つ。
 
 ### python module のインストール
 powershellで以下のコマンドを入力する。
-v
+```
+pip install numpy
+pip install matplotlib
+pip install scipy
+pip install tabulate
+```
 ### ソースファイルの配置
 ソースファイルを powershellを始めに立ち上げて、pwdと入力したときに表示されるフォルダに置きます。PATHの通し方などわかる人はその必要はありません。
 
@@ -125,6 +130,12 @@ f(x) = \textrm{ph}\cdot\left(1+\textrm{erf}\left(\textrm{sk}\cdot\frac{x-x_0}{w}
 
 パラメータファイルにはこれらの情報が保存されます。
 
+## その他
+ただグラフを描画することもできます。
+```
+python lc.py 'data.txt'
+```
+
 ## Overview
 This is a program for analyzing HPLC. This program estimates the concentration not by peak height or area, but by shape. Therefore, it is resistant to changes in peak position and shape due to concentration.
 
@@ -234,3 +245,10 @@ Here, the meaning of each variable is as follows:
 |sk|Peak skew|
 
 This information is saved in the parameter file.
+
+## Other
+You can just draw a graph
+```
+python lc.py 'data.txt'
+```
+
