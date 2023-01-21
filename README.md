@@ -93,7 +93,9 @@ python lc.py -p 'Params.csv' 'data' --header 'A1'
 ```
 ### ベースライン推定
 デフォルトではベースライン推定がオンになっており、下図のようにベースラインの変動が除去されてからデータ処理されます。
+
 <img src="https://user-images.githubusercontent.com/31358974/213746956-54c0d5dd-c634-4714-a49c-2e275324562d.png" alt="baseline" width="600"/>
+
 これをオフにする場合`--noBaselineCorrection`オプションをつけてください。
 
 ### ピーク検出のパラメータ
