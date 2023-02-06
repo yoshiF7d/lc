@@ -1,4 +1,5 @@
 import numpy as np
+from tabulate import tabulate
 import re
 
 class LCData():

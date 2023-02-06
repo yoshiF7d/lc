@@ -16,6 +16,7 @@ from scipy.optimize import least_squares
 from Colors import Colors
 from AsymmetricGaussianModel import *
 from Baseline import *
+from ParseList import parseList
 
 HEADER_A1 = "LC Chromatogram(Detector A-Ch1)"
 HEADER_A2 = "LC Chromatogram(Detector A-Ch2)"
@@ -27,6 +28,7 @@ class Standard():
 		self.data = []
 		self.table = []
 		self.params = []
+		self.peaks = []
 		self.args = args
 	
 	def load(self,stdfile,loader):
@@ -34,11 +36,18 @@ class Standard():
 		with open(stdfile) as f:
 			reader = csv.reader(f)
 			self.table = [row for row in reader]
-
-		for file in list(map(lambda s:os.path.join(self.dir,s),self.table[0][1:])):
-			if file.endswith('.txt'):
-				self.data.append(loader(file))
 		
+		temp = [[s[0] for s in self.table]]
+
+		for i,file in enumerate(self.table[0][1:]):
+			if file.endswith('.txt'):
+				temp.append([s[i+1] for s in self.table])
+				self.data.append(loader(os.path.join(self.dir,file)))
+			else:
+				self.peaks.extend([float(s[i+1]) for s in self.table[1:]])
+		
+		self.table = np.asarray(temp).transpose()
+
 		if self.args.noBaselineCorrection:
 			for data in self.data:
 				data[:,1] -= baselineMedian(data[:,1])
@@ -64,17 +73,25 @@ class Standard():
 			
 			#print(x[peaks])
 
-			ind = self.peakInclude(x,peaks)
+			ind = self.peakInclude(x[peaks])
 			#print(ind)
+
 			peaks = peaks[ind]
 			rips = props['right_ips'][ind]
 			lpis = props['left_ips'][ind]
 
-			ind = pick(y[peaks],len(self.table)-1)
-			ind2 = pick(peaks[ind],len(ind))[::-1]
-			
-			peaks = peaks[ind][ind2]
-			width = rips[ind][ind2] - lpis[ind][ind2]
+			if self.peaks:
+				ind = []
+				for p in self.peaks:
+					ind.append(find_nearest(x[peaks],p))
+				peaks = peaks[ind]
+				width = rips[ind] - lpis[ind]
+			else:
+				ind = pick(y[peaks],len(self.table)-1)
+				ind2 = pick(peaks[ind],len(ind))[::-1]
+				
+				peaks = peaks[ind][ind2]
+				width = rips[ind][ind2] - lpis[ind][ind2]
 			pall = []
 
 			print('peaks : ' + str(x[peaks]))
@@ -88,11 +105,14 @@ class Standard():
 						w[k] = 1
 				
 				p0 = [peaks[i],y[peaks[i]],width[i],0]
-				pout = (least_squares(errorAGM,x0=p0,jac=wjacAGM,args=(xi,y,w))).x
+				p0l = [peaks[i]-width[i],0.5*y[peaks[i]],0.5*width[i],-np.inf]
+				p0r = [peaks[i]+width[i],1.5*y[peaks[i]],1.5*width[i],np.inf]
+				
+				pout = (least_squares(errorAGM,x0=p0,jac=wjacAGM,bounds=(p0l,p0r),args=(xi,y,w))).x
 				for p in pout:
 					pall.append(p)
 				
-			pallout = (least_squares(self.errorWhole,jac=self.jacEW,x0=pall,args=(xi,y))).x
+			pallout = (least_squares(self.errorAll,jac=self.jacAll,x0=pall,args=(xi,y))).x
 			
 			for i,p in enumerate(peaks):
 				pout = pallout[i*4:(i+1)*4]
@@ -100,14 +120,14 @@ class Standard():
 
 		self.makeInterpolation()
 	
-	def errorWhole(self,p,x,y):
+	def errorAll(self,p,x,y):
 		err = 0
 		for i in range(len(self.params)):
 			pp = p[4*i:4*(i+1)]
 			err += AGM(x,*pp)
 		return y - err
 		
-	def jacEW(self,p,x,y):
+	def jacAll(self,p,x,y):
 		j =[]
 		for i in range(len(self.params)):
 			pp = p[4*i:4*(i+1)]
@@ -136,9 +156,10 @@ class Standard():
 				plt.close(fig)
 
 	def saveParams(self):
+		print(self.args.paramFile)
 		with open(self.args.paramFile,'w',newline="") as f:
 			writer = csv.writer(f)
-			for p in self.args.paramFile:
+			for p in self.params:
 				writer.writerow([p[0][0],'x0','ph','w','sk'])
 				for row in p[1:]:
 					writer.writerow(row)
@@ -167,12 +188,20 @@ class Standard():
 
 	def checkParams(self):
 		fig,ax = plt.subplots()
-		for data in self.data:
-			x = data[:,0]
-			y = data[:,1]
-			xi = range(len(x))
-			ax.plot(x,y,'r',alpha=0.5)
-		
+
+		if self.data:
+			for data in self.data:
+				x = data[:,0]
+				y = data[:,1]
+				ax.plot(x,y,'r',alpha=0.5)
+
+			x = self.data[0][:,0]
+			y = self.data[0][:,1]
+		else:
+			x = np.arange(4801)
+
+		xi = np.arange(len(x))
+
 		if self.args.xlim is not None:
 			ax.set_xlim(self.args.xlim)
 		if self.args.ylim is not None:
@@ -183,12 +212,16 @@ class Standard():
 		for i,pp in enumerate(self.params):
 			cmax = pp[1][0]
 			ind = np.floor(pp[1][1]).astype(int)
-			if 0 < ind and ind < len(x):
-				ax.text(x[ind],self.data[0][ind,1],pp[0][0])
 			for j in range(self.args.checkParams):
 				c = cmax*(j+1)/self.args.checkParams
 				p = self.interpolate(i,c)
 				ax.plot(x,AGM(xi,*p),color=clist[i%len(clist)],alpha=0.2)
+			if 0 < ind and ind < len(x):
+				if self.data:
+					ax.text(x[ind],y[ind],pp[0][0])
+				else:
+					ax.text(x[ind],p[1],pp[0][0])
+
 		plt.show()
 		
 	def checkStandards(self):
@@ -278,20 +311,20 @@ class Standard():
 			res.append(np.dot(jacAGM(p,x,y),dpdc))
 		return - np.transpose(res)
 
-	def peakInclude(self,x,peaks):
+	def peakInclude(self,lst):
 		peak_set = set()
-		for i,peak in enumerate(peaks):
+		for i,x in enumerate(lst):
 			if self.args.peakInclude is not None:
 				isin = False
 				for lim in self.args.peakInclude:
-					if lim[0] < x[peak] and x[peak] < lim[1]:
+					if lim[0] < x and x < lim[1]:
 						isin = True
 						break
 			else:
 				isin = True
 			if isin and self.args.peakExclude is not None:
 				for lim in self.args.peakExclude:
-					if lim[0] < x[peak] and x[peak] < lim[1]:
+					if lim[0] < x and x < lim[1]:
 						isin = False
 						break
 			if isin:
@@ -338,3 +371,7 @@ def bound(ylist, peak):
 
 def pick(data,count):
 	return np.argsort(data)[::-1][:count]
+
+def find_nearest(lst,val):
+	lst = np.asarray(lst)
+	return np.abs(lst-val).argmin()

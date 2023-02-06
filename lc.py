@@ -12,9 +12,18 @@ HEADER_A1 = "LC Chromatogram(Detector A-Ch1)"
 HEADER_A2 = "LC Chromatogram(Detector A-Ch2)"
 HEADER_B1 = "LC Chromatogram(Detector B-Ch1)"
 
+def tryint(s):
+	try:
+		return int(s)
+	except:
+		return s
+
+def alnum_key(s):
+	return [tryint(c) for c in re.split('([0-9]+)',s)]
+
 parser = argparse.ArgumentParser(description='LC processor')
 parser.add_argument('filein',nargs='?',help='Input file or directory')
-parser.add_argument('fileout',nargs='?',help='Output file')
+parser.add_argument('-o','--fileout',help='Output file')
 parser.add_argument('-s','--standardFile',help="Standard file")
 parser.add_argument('-p','--paramFile',help="Parameter file")
 parser.add_argument('--plotDir',help="Plot Directory")
@@ -70,13 +79,17 @@ if args.standardFile is not None:
 		stdt.plotParams()
 		exit()
 elif args.paramFile is not None:
-	stdt.loadParams(args.paramFile)
+	stdt.loadParams()
+	if args.checkParams:
+		stdt.checkParams()
 	if args.plotParamsDir is not None:
 		stdt.plotParams()
 		exit()
 else:
-	lcdata = LCData(args.filein)
-	data = lcdata.query(args.header)
+	if not args.filein:
+		parser.print_help()
+		exit()
+	data = LCData(args.filein).query(args.header)
 	if args.noBaselineCorrection:
 		data[:,1] -= baselineMedian(data[:,1])
 	else:
@@ -98,7 +111,6 @@ else:
 		plt.close(fig)
 	else:	
 		plt.show()
-	#print('stdFile or paramFile is required')
 	exit()	
 
 if args.filein is not None:
@@ -117,8 +129,7 @@ if args.filein is not None:
 			os.makedirs(args.plotDir,exist_ok=True)
 		for file in files:
 			if file.endswith('.txt'):
-				lcdata = LCData(os.path.join(args.filein,file))
-				data = lcdata.query(args.header)
+				data = LCData(os.path.join(args.filein,file)).query(args.header)
 				if args.noBaselineCorrection:
 					data[:,1] -= baselineMedian(data[:,1])
 				else:
@@ -162,8 +173,7 @@ if args.filein is not None:
 			
 	elif args.filein.endswith('.txt'):
 		#single file mode
-		lcdata = LCData(args.filein)
-		data = lcdata.query(args.header)
+		data = LCData(args.filein).query(args.header)
 		if args.noBaselineCorrection:
 			data[:,1] -= baselineMedian(data[:,1])
 		else:
