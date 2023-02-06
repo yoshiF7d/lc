@@ -21,6 +21,14 @@ def tryint(s):
 def alnum_key(s):
 	return [tryint(c) for c in re.split('([0-9]+)',s)]
 
+def loadData(file,args):
+	data = LCData(file).query(args.header)
+	if args.noBaselineCorrection:
+		data[:,1] -= baselineMedian(data[:,1])
+	else:
+		data[:,1] -= baseline(data[:,1])
+	return data
+
 parser = argparse.ArgumentParser(description='LC processor')
 parser.add_argument('filein',nargs='?',help='Input file or directory')
 parser.add_argument('-o','--fileout',help='Output file')
@@ -51,6 +59,7 @@ if args.xlim is not None:
 	args.xlim = parseList(args.xlim)
 if args.ylim is not None:
 	args.ylim = parseList(args.ylim)
+
 if args.peakInclude is not None:
 	args.peakInclude = parseList(args.peakInclude)
 	if args.peakInclude and not isinstance(args.peakInclude[0],list):
@@ -85,25 +94,47 @@ elif args.paramFile is not None:
 	if args.plotParamsDir is not None:
 		stdt.plotParams()
 		exit()
-else:
-	if not args.filein:
-		parser.print_help()
-		exit()
-	data = LCData(args.filein).query(args.header)
-	if args.noBaselineCorrection:
-		data[:,1] -= baselineMedian(data[:,1])
-	else:
-		data[:,1] -= baseline(data[:,1])
-	
-	x = data[:,0]
-	y = data[:,1]
-
+elif not args.filein:
+	parser.print_help()
+	exit()
+elif os.path.isdir(args.filein):
+	files = os.listdir(args.filein)
+	files.sort(key=alnum_key)
 	fig,ax = plt.subplots()
-	ax.plot(x,y,'r')
+	
 	if args.xlim is not None:
 		ax.set_xlim(args.xlim)
 	if args.ylim is not None:
 		ax.set_ylim(args.ylim)
+	
+	for file in files:
+		if file.endswith('.txt'):
+			data = loadData(os.path.join(args.filein,file),args)
+			x = data[:,0]
+			y = data[:,1]
+			ax.plot(x,y,label=os.path.basename(file))
+	
+	ax.legend()
+	if args.plotDir is not None:
+		os.makedirs(args.plotDir,exist_ok=True)
+		fig.savefig(os.path.join(args.plotDir,os.path.splitext(os.path.basename(args.filein))[0]+'.png'))
+		plt.close(fig)
+	else:	
+		plt.show()
+	exit()
+else:
+	data = loadData(args.filein,args)
+	x = data[:,0]
+	y = data[:,1]
+
+	fig,ax = plt.subplots()
+
+	if args.xlim is not None:
+		ax.set_xlim(args.xlim)
+	if args.ylim is not None:
+		ax.set_ylim(args.ylim)
+
+	ax.plot(x,y)
 	
 	if args.plotDir is not None:
 		os.makedirs(args.plotDir,exist_ok=True)
@@ -129,21 +160,19 @@ if args.filein is not None:
 			os.makedirs(args.plotDir,exist_ok=True)
 		for file in files:
 			if file.endswith('.txt'):
-				data = LCData(os.path.join(args.filein,file)).query(args.header)
-				if args.noBaselineCorrection:
-					data[:,1] -= baselineMedian(data[:,1])
-				else:
-					data[:,1] -= baseline(data[:,1])
+				data = loadData(os.path.join(args.filein,file),args)
 			
 				if args.plotDir is not None:
 					fig,ax = plt.subplots()
 					x = data[:,0]
 					y = data[:,1]
-					ax.plot(x,y,'r')
+
 					if args.xlim is not None:
 						ax.set_xlim(args.xlim)
 					if args.ylim is not None:
 						ax.set_ylim(args.ylim)
+					
+					ax.plot(x,y)
 					
 					ax.set_title(os.path.basename(file))
 					cout = stdt.eval(data,ax)
@@ -173,17 +202,12 @@ if args.filein is not None:
 			
 	elif args.filein.endswith('.txt'):
 		#single file mode
-		data = LCData(args.filein).query(args.header)
-		if args.noBaselineCorrection:
-			data[:,1] -= baselineMedian(data[:,1])
-		else:
-			data[:,1] -= baseline(data[:,1])
-		
+		data = loadData(args.filein,args)
 		x = data[:,0]
 		y = data[:,1]
 	
 		fig,ax = plt.subplots()
-		ax.plot(x,y,'r')
+		ax.plot(x,y)
 		if args.xlim is not None:
 			ax.set_xlim(args.xlim)
 		if args.ylim is not None:
@@ -204,4 +228,3 @@ if args.filein is not None:
 			plt.close(fig)
 		else:	
 			plt.show()
-

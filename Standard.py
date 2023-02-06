@@ -87,7 +87,7 @@ class Standard():
 				peaks = peaks[ind]
 				width = rips[ind] - lpis[ind]
 			else:
-				ind = pick(y[peaks],len(self.table)-1)
+				ind = pick(y[peaks],len(self.params))
 				ind2 = pick(peaks[ind],len(ind))[::-1]
 				
 				peaks = peaks[ind][ind2]
@@ -105,8 +105,8 @@ class Standard():
 						w[k] = 1
 				
 				p0 = [peaks[i],y[peaks[i]],width[i],0]
-				p0l = [peaks[i]-width[i],0.5*y[peaks[i]],0.5*width[i],-np.inf]
-				p0r = [peaks[i]+width[i],1.5*y[peaks[i]],1.5*width[i],np.inf]
+				p0l = [peaks[i]-width[i],0.5*y[peaks[i]],0.5*width[i],-10]
+				p0r = [peaks[i]+width[i],1.5*y[peaks[i]],1.5*width[i],10]
 				
 				pout = (least_squares(errorAGM,x0=p0,jac=wjacAGM,bounds=(p0l,p0r),args=(xi,y,w))).x
 				for p in pout:
@@ -114,22 +114,40 @@ class Standard():
 				
 			pallout = (least_squares(self.errorAll,jac=self.jacAll,x0=pall,args=(xi,y))).x
 			
-			for i,p in enumerate(peaks):
-				pout = pallout[i*4:(i+1)*4]
-				self.params[i].append([float(self.table[1:][i][j+1]),pout[0],pout[1],pout[2],pout[3]])
+			if len(peaks) == len(self.params):
+				for i in range(len(peaks)):
+					pout = pallout[i*4:(i+1)*4]
+					self.params[i].append([float(self.table[1:][i][j+1]),pout[0],pout[1],pout[2],pout[3]])
+			else:
+				print("warning : peak count doesn't match with chemichal count in standard file")
+				x0s = []
+				for k in range(len(peaks)):
+					x0s.append(pallout[k*4])
+				x0s = np.array(x0s)
+				for i in range(len(self.params)):
+					self.params[i].append([0,0,0,1,0])
+
+				for i in range(len(self.params)):
+					x0ave = np.average([p[1] for p in self.params[i][1:-1]])
+					k = np.argmin(np.abs(x0s - x0ave))
+					pout = pallout[k*4:(k+1)*4]
+					self.params[i][-1][:] = [float(self.table[1:][i][j+1]),pout[0],pout[1],pout[2],pout[3]]
+
+		#for p in self.params:
+		#	print(tabulate(p))
 
 		self.makeInterpolation()
 	
 	def errorAll(self,p,x,y):
 		err = 0
-		for i in range(len(self.params)):
+		for i in range(len(p)//4):
 			pp = p[4*i:4*(i+1)]
 			err += AGM(x,*pp)
 		return y - err
 		
 	def jacAll(self,p,x,y):
 		j =[]
-		for i in range(len(self.params)):
+		for i in range(len(p)//4):
 			pp = p[4*i:4*(i+1)]
 			j.append(jacAGM(pp,x,y))
 		return -np.hstack(j)
@@ -223,7 +241,7 @@ class Standard():
 					ax.text(x[ind],p[1],pp[0][0])
 
 		plt.show()
-		
+	
 	def checkStandards(self):
 		fig,ax = plt.subplots()
 		for d in self.data:
@@ -283,7 +301,7 @@ class Standard():
 		
 		cout = (least_squares(self.error,x0=concs,jac=self.jac,ftol=1e-10,bounds=(0,np.inf),args=(x,y))).x
 		if ax is not None:
-			ax.plot(data[:,0],self.model(x,cout),'b',alpha=0.5,linestyle='dashed')
+			ax.plot(data[:,0],self.model(x,cout),'red',alpha=0.5,linestyle='dashed')
 		
 		return cout
 		#ax.plot(data[:,0],y,'r',alpha=0.5)
