@@ -56,6 +56,7 @@ class Standard():
 		self.setParams()
 	
 	def setParams(self):
+		sane = True
 		for s in self.table[1:]:
 			self.params.append([[s[0],'x0','ph','w','sk']]) # will be soon replaced by a interpolation object
 
@@ -111,27 +112,32 @@ class Standard():
 				pout = (least_squares(errorAGM,x0=p0,jac=wjacAGM,bounds=(p0l,p0r),args=(xi,y,w))).x
 				for p in pout:
 					pall.append(p)
-				
-			pallout = (least_squares(self.errorAll,jac=self.jacAll,x0=pall,args=(xi,y))).x
 			
-			if len(peaks) == len(self.params):
+			if sane:
+				pallout = (least_squares(self.errorAll,jac=self.jacAll,x0=pall,args=(xi,y))).x
+			else:
+				pallout = pall
+
+			if sane:
 				for i in range(len(peaks)):
 					pout = pallout[i*4:(i+1)*4]
 					self.params[i].append([float(self.table[1:][i][j+1]),pout[0],pout[1],pout[2],pout[3]])
+				if len(peaks) != len(self.params):
+					sane = False
+					print(Colors.RED + "warning" + Colors.RESET + " : peak count doesn't match with chemichal count in standard file")
+					for i in range(len(peaks),len(self.params)):
+						self.params[i].append([0,0,0,1,0])
 			else:
-				print("warning : peak count doesn't match with chemichal count in standard file")
-				x0s = []
-				for k in range(len(peaks)):
-					x0s.append(pallout[k*4])
-				x0s = np.array(x0s)
+				x0_base = np.array([np.average([pp[1] for pp in p[1:]]) for p in self.params])
+				x0s = pallout[::4]
+				indices=[]
+				for i,x in enumerate(x0_base):
+					indices.append(np.argmin(np.abs(x0s-x)))
+		
 				for i in range(len(self.params)):
-					self.params[i].append([0,0,0,1,0])
-
-				for i in range(len(self.params)):
-					x0ave = np.average([p[1] for p in self.params[i][1:-1]])
-					k = np.argmin(np.abs(x0s - x0ave))
+					k = indices[i]
 					pout = pallout[k*4:(k+1)*4]
-					self.params[i][-1][:] = [float(self.table[1:][i][j+1]),pout[0],pout[1],pout[2],pout[3]]
+					self.params[i].append([float(self.table[1:][i][j+1]),pout[0],pout[1],pout[2],pout[3]])
 
 		#for p in self.params:
 		#	print(tabulate(p))
