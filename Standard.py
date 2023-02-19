@@ -93,7 +93,10 @@ class Standard():
 				
 				peaks = peaks[ind][ind2]
 				width = rips[ind][ind2] - lpis[ind][ind2]
+
 			pall = []
+			blall = []
+			brall = []
 
 			print('peaks : ' + str(x[peaks]))
 
@@ -110,11 +113,14 @@ class Standard():
 				p0r = [peaks[i]+width[i],1.5*y[peaks[i]],1.5*width[i],10]
 				
 				pout = (least_squares(errorAGM,x0=p0,jac=wjacAGM,bounds=(p0l,p0r),args=(xi,y,w))).x
-				for p in pout:
-					pall.append(p)
+				for po in pout:
+					pall.append(po)
+				
+				blall.extend(p0l)
+				brall.extend(p0r)
 			
 			if sane:
-				pallout = (least_squares(self.errorAll,jac=self.jacAll,x0=pall,args=(xi,y))).x
+				pallout = (least_squares(self.errorAll,jac=self.jacAll,bounds=(blall,brall),x0=pall,args=(xi,y))).x
 			else:
 				pallout = pall
 
@@ -159,24 +165,30 @@ class Standard():
 		return -np.hstack(j)
 
 	def plotParams(self):
-		os.makedirs(self.args.plotParams,exist_ok=True)
+		os.makedirs(self.args.plotParamsDir,exist_ok=True)
 		cmax = 0
 		for p in self.params:
 			if p[1][0] > cmax:
 				cmax = p[1][0]
 		for p in self.params:
-			os.makedirs(os.path.join(self.args.plotParams,p[0][0]),exist_ok=True)
-			for j in range(1,len(p[0])):
+			#os.makedirs(os.path.join(self.args.plotParams,p[0][0]),exist_ok=True)
+			file = os.path.join(self.args.plotParamsDir,p[0][0] + '.png')
+			fig,ax = plt.subplots(2,2)
+
+			label = ['x0','ph','w','sk']
+
+			for j in range(4):
 				x = [p[i][0] for i in range(1,len(p))]
-				y = [p[i][j] for i in range(1,len(p))]
+				y = [p[i][j+1] for i in range(1,len(p))]
 				x2 = range(0,np.floor(cmax).astype(int),1)
-				fit = p[0][j]
-				fig,ax = plt.subplots()
-				ax.plot(x,y,'bo')
-				ax.plot(x2,fit(x2),'r-')
-				ax.set_xlim(0,cmax)
-				path = os.path.join(self.args.plotParams,p[0][0],'p'+str(j)+'.png')
-				fig.savefig(path)
+				fit = p[0][j+1]
+				
+				ax[j//2][j%2].plot(x,y,'bo')
+				ax[j//2][j%2].plot(x2,fit(x2),'r-')
+				ax[j//2][j%2].set_title(label[j])
+				ax[j//2][j%2].set_xlim(0,cmax)
+
+				fig.savefig(file)
 				plt.close(fig)
 
 	def saveParams(self):
