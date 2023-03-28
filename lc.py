@@ -11,6 +11,7 @@ os.system('')
 HEADER_A1 = "LC Chromatogram(Detector A-Ch1)"
 HEADER_A2 = "LC Chromatogram(Detector A-Ch2)"
 HEADER_B1 = "LC Chromatogram(Detector B-Ch1)"
+INTERPOLATION_ORDER = 2
 
 def tryint(s):
 	try:
@@ -23,6 +24,8 @@ def alnum_key(s):
 
 def loadData(file,args):
 	data = LCData(file).query(args.header)
+	if args.polarity:
+		data[:,1] *= -1
 	if args.noBaselineCorrection:
 		data[:,1] -= baselineMedian(data[:,1])
 	else:
@@ -36,17 +39,20 @@ parser.add_argument('-s','--standardFile',help="Standard file")
 parser.add_argument('-p','--paramFile',help="Parameter file")
 parser.add_argument('--plotDir',help="Plot Directory")
 parser.add_argument('--plotParamsDir',help='Plot parameters Directory')
-parser.add_argument('--checkParams',action='store_const',const=10,help='check parameters (Standard file is required)')
+parser.add_argument('--checkParams',action='store_true',help='check parameters (Standard file is required)')
 parser.add_argument('--checkStandards',action='store_true',help='check standards data (Standard file is required)')
 parser.add_argument('--header',default=HEADER_B1,help='header name to query in a datafile')
-parser.add_argument('--noBaselineCorrection',default=False,action='store_true',help='no baseline correction')
+parser.add_argument('--noBaselineCorrection',action='store_true',help='no baseline correction')
 parser.add_argument('--xlim',help='x region of plot')
 parser.add_argument('--ylim',help='y region of plot')
 parser.add_argument('--label',help='show chemical species label',action='store_true')
-parser.add_argument('--peakProminence',type=float,default=1.0,help='set prominence parameter for peak detection')
-parser.add_argument('--peakWidth',type=int,default=15,help='set width parameter for peak detection')
+parser.add_argument('--peakProminence',type=float,default=1.0,help='set prominence parameter for peak detection. default : 1.0')
+parser.add_argument('--peakWidth',type=int,default=15,help='set width parameter for peak detection. default : 15')
 parser.add_argument('--peakInclude',help='set regions to include for peak detection. signature : [[tmin1,tmax2],[tmin1,tmax2],...]')
 parser.add_argument('--peakExclude',help='set regions to exclude for peak detection. signature : [[tmin1,tmax2],[tmin1,tmax2],...]')
+parser.add_argument('--polarity',action='store_true',help='multiply -1 to the data')
+parser.add_argument('--interpolationOrder',default=INTERPOLATION_ORDER,type=int,help='interpolation order used for parameter fiting')
+parser.add_argument('--shiftTolerance',type=float,default=0.01,help='set x shift tolerance')
 
 args = parser.parse_args()
 
@@ -76,21 +82,20 @@ if args.standardFile is not None:
 	stdt.load(args.standardFile,lambda file:LCData(file).query(args.header))
 	print(Colors.YELLOW + "Standard Data Table" + Colors.RESET)
 	print(tabulate(stdt.table))
+	stdt.checkParams()
 	if args.paramFile is not None:
 		stdt.saveParams()
-	if args.checkParams:
-		stdt.checkParams()
+	if args.plotParamsDir is not None:
+		stdt.plotParams()
 		exit()
 	if args.checkStandards:
 		stdt.checkStandards()
-		exit()
-	if args.plotParamsDir is not None:
-		stdt.plotParams()
 		exit()
 elif args.paramFile is not None:
 	stdt.loadParams()
 	if args.checkParams:
 		stdt.checkParams()
+		exit()
 	if args.plotParamsDir is not None:
 		stdt.plotParams()
 		exit()
@@ -112,14 +117,14 @@ elif os.path.isdir(args.filein):
 			data = loadData(os.path.join(args.filein,file),args)
 			x = data[:,0]
 			y = data[:,1]
-			ax.plot(x,y,label=os.path.basename(file))
+			ax.plot(x,y,label=os.path.basename(file),alpha=0.5)
 	
 	ax.legend()
 	if args.plotDir is not None:
 		os.makedirs(args.plotDir,exist_ok=True)
 		fig.savefig(os.path.join(args.plotDir,os.path.splitext(os.path.basename(args.filein))[0]+'.png'))
 		plt.close(fig)
-	else:	
+	else:
 		plt.show()
 	exit()
 else:

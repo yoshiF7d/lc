@@ -48,6 +48,10 @@ class Standard():
 		
 		self.table = np.asarray(temp).transpose()
 
+		if self.args.polarity:
+			for data in self.data:
+				data[:,1] *= -1
+
 		if self.args.noBaselineCorrection:
 			for data in self.data:
 				data[:,1] -= baselineMedian(data[:,1])
@@ -112,7 +116,7 @@ class Standard():
 				p0l = [peaks[i]-width[i],0.5*y[peaks[i]],0.5*width[i],-10]
 				p0r = [peaks[i]+width[i],1.5*y[peaks[i]],1.5*width[i],10]
 				
-				pout = (least_squares(errorAGM,x0=p0,jac=wjacAGM,bounds=(p0l,p0r),args=(xi,y,w))).x
+				pout = (least_squares(errorAGM,x0=p0,x_scale='jac',ftol=1e-10,jac=wjacAGM,bounds=(p0l,p0r),args=(xi,y,w))).x
 				for po in pout:
 					pall.append(po)
 				
@@ -184,9 +188,10 @@ class Standard():
 				fit = p[0][j+1]
 				
 				ax[j//2][j%2].plot(x,y,'bo')
-				ax[j//2][j%2].plot(x2,fit(x2),'r-')
+				#ax[j//2][j%2].plot(x2,fit(x2),'r-')
+				ax[j//2][j%2].plot(x2,np.polyval(fit,x2),'r-')
 				ax[j//2][j%2].set_title(label[j])
-				ax[j//2][j%2].set_xlim(0,cmax)
+				ax[j//2][j%2].set_xlim(0,p[1][0])
 
 				fig.savefig(file)
 				plt.close(fig)
@@ -248,8 +253,8 @@ class Standard():
 		for i,pp in enumerate(self.params):
 			cmax = pp[1][0]
 			ind = np.floor(pp[1][1]).astype(int)
-			for j in range(self.args.checkParams):
-				c = cmax*(j+1)/self.args.checkParams
+			for j in range(10):
+				c = cmax*(j+1)/10
 				p = self.interpolate(i,c)
 				ax.plot(x,AGM(xi,*p),color=clist[i%len(clist)],alpha=0.2)
 			if 0 < ind and ind < len(x):
@@ -257,7 +262,7 @@ class Standard():
 					ax.text(x[ind],y[ind],pp[0][0])
 				else:
 					ax.text(x[ind],p[1],pp[0][0])
-
+		
 		plt.show()
 	
 	def checkStandards(self):
@@ -295,15 +300,25 @@ class Standard():
 				if j == 2:
 					x.append(0)
 					y.append(0)
-				fit = interpolate.interp1d(x,y,kind='linear',fill_value='extrapolate')
+				#fit = interpolate.interp1d(x,y,kind='linear',fill_value='extrapolate')
+				#fit = interpolate.UnivariateSpline(np.flip(x),np.flip(y))
+				fit = np.polyfit(x,y,self.args.interpolationOrder)
 				p[0][j] = fit
 				
 	def interpolate(self,ind,conc):
-		return np.array([self.params[ind][0][1](conc),self.params[ind][0][2](conc),self.params[ind][0][3](conc),self.params[ind][0][4](conc)])
-	
+		#return np.array([self.params[ind][0][1](conc),self.params[ind][0][2](conc),self.params[ind][0][3](conc),self.params[ind][0][4](conc)])
+		return np.array(
+			[
+				np.polyval(self.params[ind][0][1],conc),
+				np.polyval(self.params[ind][0][2],conc),
+				np.polyval(self.params[ind][0][3],conc),
+				np.polyval(self.params[ind][0][4],conc),
+			]
+		)
+
 	def eval(self,data,ax):
 		lenp = len(self.params)
-		concs = np.zeros(lenp)
+		concs = np.zeros(lenp+1)
 		
 		y = data[:,1]
 		x = range(len(y))
@@ -316,35 +331,59 @@ class Standard():
 				concs[i] = c
 			else:
 				concs[i] = 0
+
+		#add initial guess of x shift to the last of concs
+		concs[-1] = 0
+		bl = []
+		br = []
+
+		for c in concs[:-1]:
+			bl.append(0)
+			br.append(np.inf)
 		
-		cout = (least_squares(self.error,x0=concs,jac=self.jac,ftol=1e-10,bounds=(0,np.inf),args=(x,y))).x
+		bl.append(-float(self.args.shiftTolerance))
+		br.append(float(self.args.shiftTolerance))
+
+		cout = (least_squares(self.error,x0=concs,x_scale='jac',jac=self.jac,bounds=(bl,br),args=(x,y))).x
 		if ax is not None:
 			ax.plot(data[:,0],self.model(x,cout),'red',alpha=0.5,linestyle='dashed')
+			#ax.plot(data[:,0],self.model(x,1.5*cout),'red',alpha=0.5,linestyle='dashed')
 		
-		return cout
+		#print("x shift : " + str(cout[-1]))
+		return cout[:-1]
 		#ax.plot(data[:,0],y,'r',alpha=0.5)
 	
 	def error(self,concs,x,y):
 		err = 0
-		for i,c in enumerate(concs):
+		for i,c in enumerate(concs[:-1]):
 			p = self.interpolate(i,c)
+			p[0] += concs[-1]
 			err += AGM(x,*p)
 		
 		return y - err
 			
 	def model(self,x,concs):
 		ret = 0
-		for i,c in enumerate(concs):
-			ret += AGM(x,*self.interpolate(i,c))
+		for i,c in enumerate(concs[:-1]):
+			p = self.interpolate(i,c)
+			p[0] += concs[-1]
+			ret += AGM(x,*p)
 		return ret
 		
 	def jac(self,concs,x,y):
-		dc = 0.01
+		#dc = 0.01
 		res=[]
-		for i,c in enumerate(concs):
+		las=np.zeros(len(x))
+		for i,c in enumerate(concs[:-1]):
 			p = self.interpolate(i,c)
-			dpdc = (self.interpolate(i,c + 0.5*dc) - self.interpolate(i,c - 0.5*dc))/dc
+			p[0] += concs[-1]
+			#dpdc = (self.interpolate(i,c + 0.5*dc) - self.interpolate(i,c - 0.5*dc))/dc
+			dpdc = [2*c*self.params[i][0][k+1][-3]+self.params[i][0][k+1][-2] for k in range(4)] 
 			res.append(np.dot(jacAGM(p,x,y),dpdc))
+			las += np.dot(jacAGM(p,x,y),[1,0,0,0])
+		# effect of x shift
+		res.append(las)
+
 		return - np.transpose(res)
 
 	def peakInclude(self,lst):
