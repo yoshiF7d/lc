@@ -326,7 +326,11 @@ class Standard():
 		#initial guess
 		for i,p in enumerate(self.params):
 			x0 = np.average([p[j][1] for j in range(1,len(p))])
-			c = (data[np.floor(x0).astype(int),1] / p[1][2]) * p[1][0]
+			index = np.floor(x0).astype(int)
+			if 0 < index and index < len(data) :
+				c = (data[index,1] / p[1][2]) * p[1][0]
+			else:
+				c = 0
 			if c > 0:
 				concs[i] = c
 			else:
@@ -357,7 +361,7 @@ class Standard():
 		err = 0
 		for i,c in enumerate(concs[:-1]):
 			p = self.interpolate(i,c)
-			p[0] += concs[-1]
+			p[0] *= np.exp(concs[-1])
 			err += AGM(x,*p)
 		
 		return y - err
@@ -366,7 +370,7 @@ class Standard():
 		ret = 0
 		for i,c in enumerate(concs[:-1]):
 			p = self.interpolate(i,c)
-			p[0] += concs[-1]
+			p[0] *= np.exp(concs[-1])
 			ret += AGM(x,*p)
 		return ret
 		
@@ -376,11 +380,11 @@ class Standard():
 		las=np.zeros(len(x))
 		for i,c in enumerate(concs[:-1]):
 			p = self.interpolate(i,c)
-			p[0] += concs[-1]
+			p[0] *= np.exp(concs[-1])
 			#dpdc = (self.interpolate(i,c + 0.5*dc) - self.interpolate(i,c - 0.5*dc))/dc
 			dpdc = [2*c*self.params[i][0][k+1][-3]+self.params[i][0][k+1][-2] for k in range(4)] 
 			res.append(np.dot(jacAGM(p,x,y),dpdc))
-			las += np.dot(jacAGM(p,x,y),[1,0,0,0])
+			las += np.dot(jacAGM(p,x,y),[np.exp(concs[-1])*p[0],0,0,0])
 		# effect of x shift
 		res.append(las)
 
