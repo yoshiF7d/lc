@@ -47,7 +47,7 @@ parser.add_argument('--xlim',help='x region of plot')
 parser.add_argument('--ylim',help='y region of plot')
 parser.add_argument('--label',help='show chemical species label',action='store_true')
 parser.add_argument('--peakProminence',type=float,default=1.0,help='set prominence parameter for peak detection. default : 1.0')
-parser.add_argument('--peakWidth',type=int,default=15,help='set width parameter for peak detection. default : 15')
+parser.add_argument('--peakWidth',type=float,default=0.1,help='set width parameter for peak detection. default : 0.1')
 parser.add_argument('--peakInclude',help='set regions to include for peak detection. signature : [[tmin1,tmax2],[tmin1,tmax2],...]')
 parser.add_argument('--peakExclude',help='set regions to exclude for peak detection. signature : [[tmin1,tmax2],[tmin1,tmax2],...]')
 parser.add_argument('--polarity',action='store_true',help='multiply -1 to the data')
@@ -80,8 +80,6 @@ stdt = Standard(args)
 
 if args.standardFile is not None:
 	stdt.load(args.standardFile,lambda file:LCData(file).query(args.header))
-	print(Colors.YELLOW + "Standard Data Table" + Colors.RESET)
-	print(tabulate(stdt.table))
 	stdt.checkParams()
 	if args.paramFile is not None:
 		stdt.saveParams()
@@ -154,9 +152,9 @@ if args.filein is not None:
 		#multiple file mode	
 		files = os.listdir(args.filein)
 		files.sort(key=alnum_key)
-		row = ['File Name']+[p[0][0] for p in stdt.params]
+		row = ['File Name']+list(stdt.chems.keys())
 		fmtstr = "{:<20}"
-		for p in stdt.params:
+		for chem in stdt.chems:
 			fmtstr += " {:<15}"
 		print(fmtstr.format(*row))
 		output = []
@@ -183,10 +181,9 @@ if args.filein is not None:
 					cout = stdt.eval(data,ax)
 					
 					if args.label is not None:
-						for i,pp in enumerate(stdt.params):
-							p = stdt.interpolate(i,cout[i])
-							ind = np.floor(p[0]).astype(int)
-							ax.text(x[ind],p[1],pp[0][0])
+						for i,chem in enumerate(stdt.chems):
+							p = chem.interpolate(cout[i])
+							ax.text(x[np.floor(chem.pos).astype(int)],p[1],chem.name)
 
 					fig.savefig(os.path.join(args.plotDir,os.path.splitext(os.path.basename(file))[0]+'.png'))
 					plt.close(fig)	
@@ -219,10 +216,9 @@ if args.filein is not None:
 			ax.set_ylim(args.ylim)
 		cout=stdt.eval(data,ax)
 		if args.label is not None:
-			for i,pp in enumerate(stdt.params):
-				p = stdt.interpolate(i,cout[i])
-				ind = np.floor(p[0]).astype(int)
-				ax.text(x[ind],p[1],pp[0][0])
+			for i,chem in enumerate(stdt.chems):
+				p = chem.interpolate(cout[i])
+				ax.text(x[np.floor(chem.pos).astype(int)],p[1],chem.name)
 		print()
 		res = [['file']+[p[0][0] for p in stdt.params]]
 		res.append([os.path.basename(args.filein)]+list(cout))

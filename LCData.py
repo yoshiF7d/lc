@@ -119,7 +119,7 @@ class LCSubData():
 			
 			if "R.Time" in lines[0]:
 				if not headerOnly:
-					 self.loadData(lines[1])
+					self.loadData(lines[1])
 				break
 				
 			self.table.append(lines[0].split("\t"))
