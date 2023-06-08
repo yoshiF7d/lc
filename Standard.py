@@ -143,7 +143,6 @@ class Standard:
 		w = np.ones(n)
 		xi = np.arange(n)
 
-		print(Colors.CYAN + file + Colors.RESET)
 		peaks,props = find_peaks(y,prominence=self.args.peakProminence*stdev,width=self.args.peakWidth/dx)
 		inds = self.peakInclude(x[peaks])
 		peaks,rips,lips = peaks[inds],props['right_ips'][inds],props['left_ips'][inds]
@@ -186,6 +185,8 @@ class Standard:
 		pall = []
 		blall = []
 		brall = []
+
+		print(tabulate([[file] + [x[p] for p in Peaks]],tablefmt="plain",floatfmt=".1f"))
 
 		for peak,width in zip(Peaks,Widths):
 			bd = bound(y,peak)
@@ -252,12 +253,11 @@ class Standard:
 			label = ['x0','ph','w','sk']
 
 			x = chem.concs
-			x2 = range(0,np.floor(cmax).astype(int),1)
+			x2 = np.linspace(0,np.floor(cmax).astype(int),100)
 
 			for j in range(4):
 				y = chem.params[:,j]
 				fit = chem.fit[j]
-				
 				ax[j//2][j%2].plot(x,y,'bo')
 				ax[j//2][j%2].plot(x2,np.polyval(fit,x2),'r-')
 				ax[j//2][j%2].set_title(label[j])
@@ -268,7 +268,7 @@ class Standard:
 			
 		fig,ax = plt.subplots()
 		self.checkParams(ax)
-		fig.savefig(file)
+		fig.savefig(os.path.join(self.args.plotParamsDir,'fit.png'))
 
 	def saveParams(self):
 		print(self.args.paramFile)
@@ -291,13 +291,14 @@ class Standard:
 			table = readcsvstr(s)
 			for i in range(1,len(table)):
 				self.appendChem(table[0][0],float(table[i][0]),np.asarray(table[i][1:],dtype=float))
-			
+
 		for chem in self.chems.values():
-			chem.finalize()
 			for i,p in enumerate(chem.params):
-				chem.params[i,0] = p[0]*self.args.shift
+				chem.params[i][0] *= self.args.shift
+			chem.finalize()
 
 	def checkParams(self,ax=None):
+		show = False
 		if not ax:
 			show = True
 			fig,ax = plt.subplots()
