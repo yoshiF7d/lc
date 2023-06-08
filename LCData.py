@@ -1,6 +1,7 @@
 import numpy as np
 from tabulate import tabulate
 import re
+from Colors import Colors
 
 class LCData():
 	def __init__(self,file):
@@ -30,6 +31,13 @@ class LCData():
 
 		return c.data
 	
+	def getHeader(self):
+		for c in self.content:
+			if c.type == "LC Chromatogram":
+				return c.name
+		return None
+
+
 class LCSubData():
 	def __init__(self,strin):
 		self.name = None
@@ -75,9 +83,9 @@ class LCSubData():
 	
 	def print(self):
 		#print(colors.RED + str(self.type) + colors.RESET)
-		print(colors.GREEN + self.name + colors.RESET)
+		print(Colors.GREEN + self.name + Colors.RESET)
 		#print(colors.RED + str(self.table) + colors.RESET)
-		print(colors.YELLOW + tabulate(self.table) + colors.RESET)
+		print(Colors.YELLOW + tabulate(self.table) + Colors.RESET)
 		
 		if	self.data is not None:
 			if type(self.data) is np.ndarray:
@@ -119,7 +127,7 @@ class LCSubData():
 			
 			if "R.Time" in lines[0]:
 				if not headerOnly:
-					 self.loadData(lines[1])
+					self.loadData(lines[1])
 				break
 				
 			self.table.append(lines[0].split("\t"))
