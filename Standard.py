@@ -22,43 +22,31 @@ HEADER_A1 = "LC Chromatogram(Detector A-Ch1)"
 HEADER_A2 = "LC Chromatogram(Detector A-Ch2)"
 HEADER_B1 = "LC Chromatogram(Detector B-Ch1)"
 
-class ConcParam:
-	def __init__(self,conc,param):
-		self.conc = conc
-		self.param = param
-	def __str__(self):
-		lst = [self.conc]
-		lst.extend(self.param)
-		return ','.join([str(l) for l in lst])
-
-class NameConc:
-	def __init__(self,name,conc,pos):
-		self.name = name
-		self.conc = conc
-		self.pos = pos
-
 class Chem:
-	def __init__(self,name):
+	def __init__(self,name,conc,param):
 		self.name = name
-		self.concParams = []
+		self.concs = [conc]
+		self.params = [param]
 		self.fit = []
-		self.pos = 0
-	def appendConcParam(self,concParam):
-		self.concParams.append(concParam)
-	def finalize(self,interpolationOrder):
-		self.concParams.sort(key=lambda x:x.conc,reverse=True)
-		self.pos = np.average([p.param[0] for p in self.concParams])
+		self.pos = param[0]
+	
+	def append(self,conc,param):
+		self.concs.append(conc)
+		self.params.append(param)
+		self.pos = 0.5 * (self.pos + param[0])
 
-		for j in range(4):
-			x = [p.conc for p in self.concParams]
-			y = [p.param[j] for p in self.concParams]
-			if j == 1: 
-				# for peak height
-				x.append(0)
-				y.append(0)
-			self.fit.append(np.polyfit(x,y,interpolationOrder))
-	def cmax(self):
-		return self.concParams[0].conc
+	def finalize(self):
+		self.concs = np.asarray(self.concs)
+		self.params = np.asarray(self.params)
+		inds = (-self.concs).argsort()
+		self.concs = self.concs[inds]
+		self.params = self.params[inds]
+
+		self.fit.append(np.polyfit(self.concs,self.params[:,0],2))
+		self.fit.append(np.polyfit(np.append([0],self.concs),np.append([0],self.params[:,1]),1))
+		self.fit.append(np.polyfit(self.concs,self.params[:,2],2))
+		self.fit.append(np.polyfit(self.concs,self.params[:,3],2))		
+
 	def interpolate(self,conc):
 		return np.array(
 			[
@@ -68,10 +56,21 @@ class Chem:
 				np.polyval(self.fit[3],conc),
 			]
 		)
-		
+
+		# p(c) = a[0]*c*c + a[1]*c + a[2]
+		# dpdc = 2*c*a[0] + a[1] 
+
+	def dpdc(self,conc):
+		return [
+			2*conc*self.fit[0][0] + self.fit[0][1],
+			self.fit[1][0],
+			2*conc*self.fit[2][0] + self.fit[2][1],
+			2*conc*self.fit[3][0] + self.fit[3][1]
+		]
+
 	def print(self):
 		print(self.name)
-		print(tabulate([[p.conc] + p.param for p in self.concParams],headers=[self.name,'x0','ph','w','sk']))
+		print(tabulate([[c] + p for c,p in zip(self.concs,self.params)]))
 
 class Standard:
 	def __init__(self,args):
@@ -80,25 +79,33 @@ class Standard:
 		self.data = []
 		self.args = args
 	
-#	def load(self,file,loader):
-#		self.dir = os.path.dirname(file)
-#		if os.path.isdir(file):
-#			files = os.listdir(file)
-#			for f in files:
-#				if file.endiwth('.csv'):
-#					self.loadstd(os.path.join(file,f),loader)
-#		else:
-#			self.loadSTD(file)
+	def appendChem(self,name,conc,param):
+		if name not in self.chems:
+			self.chems[name] = Chem(name,conc,param)
+		else:
+			self.chems[name].append(conc,param)
 	
+	def getpos(self,names):
+		pos = []
+		for name in names:
+			if name in self.chems:
+				pos.append(self.chems[name].pos)
+			else:
+				pos.append(None)
+		return np.asarray(pos)
+			
 	def load(self,file,loader):
 		dir = os.path.dirname(file)
 		table = readcsv(file).transpose()
 		print(tabulate(table))
 		
-		if table[-1,0].endswith('.txt'):
-			pos = np.full(len(table[0,1:]),None)
-		else:
+		names = np.asarray(table[0,1:])
+		concs = np.zeros(len(names))
+		
+		if not table[-1,0].endswith('.txt'):
 			pos = np.asarray(table[-1,1:],dtype=float)
+		else:
+			pos = self.getpos(names)
 
 		for s in table[1:]:
 			file = s[0]
@@ -112,25 +119,23 @@ class Standard:
 			else:
 				data[:,1] -= Baseline.calcz(y,w)
 			
-			nameConcs = []
-			for i,chemName in enumerate(table[0,1:]):
-				conc = float(s[i+1])
-				if conc > 0:
-					nameConcs.append(NameConc(chemName,conc,pos[i]))
+			for i,name in enumerate(names):
+				concs[i] = tofloat(s[i+1])
+
+			ind = concs > 0
+
+			Names = names[ind]
+			Concs = concs[ind]
+			Pos = pos[ind]
+
+			self.setParams(file,data,Names,Concs,Pos,stdev)
 			
-			self.setParams(file,data,nameConcs,stdev)
 			self.data.append(data)
 		
 		for chem in self.chems.values():
-			chem.finalize(self.args.interpolationOrder)
-
-	def appendChem(self,name,concParam):
-		if name not in self.chems:
-			self.chems[name] = Chem(name)
-		
-		self.chems[name].appendConcParam(concParam)
+			chem.finalize()
 	
-	def setParams(self,name,data,nameConcs,stdev):
+	def setParams(self,file,data,names,concs,pos,stdev):
 		x = data[:,0]
 		y = data[:,1]
 		n = len(data)
@@ -138,47 +143,64 @@ class Standard:
 		w = np.ones(n)
 		xi = np.arange(n)
 
-		print(Colors.CYAN + name + Colors.RESET)
-		#print(Colors.YELLOW + str(spec) + Colors.RESET)
+		print(Colors.CYAN + file + Colors.RESET)
 		peaks,props = find_peaks(y,prominence=self.args.peakProminence*stdev,width=self.args.peakWidth/dx)
-		ind = self.peakInclude(x[peaks])
-		peaks = peaks[ind]
-		rips = props['right_ips'][ind]
-		lpis = props['left_ips'][ind]
-		#print(peaks)
+		inds = self.peakInclude(x[peaks])
+		peaks,rips,lips = peaks[inds],props['right_ips'][inds],props['left_ips'][inds]
+		inds = np.arange(len(peaks))
+		
+		Inds = []
+		Peaks = []
+		Widths = []
 
-		if nameConcs[0].pos:		
-			ind = []
-			for s in nameConcs:
-				ind.append(find_nearest(x[peaks],s.pos))
-			peaks = peaks[ind]
-			width = rips[ind] - lpis[ind]
-		else:
-			ind = pick(y[peaks],len(nameConcs))
-			ind2 = pick(peaks[ind],len(ind))[::-1]
+		for k,p in enumerate(pos):
+			if p:
+				print(names[k])
+				i = find_nearest(x[peaks],p)
+				Inds.append(i)
+				Peaks.append(peaks[i])
+				Widths.append(rips[i] - lips[i]) 
+			else:
+				Peaks.append(None)
+				Widths.append(None)
+		
+		cp = len(Inds) #count of peaks with known pos 
+		cuk = len(names) - cp #count of peaks with unknown pos
+		
+		ind = complement(inds,Inds)
+		peaks,rips,lips = peaks[ind],rips[ind],lips[ind]
+
+		ind = pick(y[peaks],cuk)
+		ind2 = pick(peaks[ind],len(ind))[::-1]
 			
-			peaks = peaks[ind][ind2]
-			width = rips[ind][ind2] - lpis[ind][ind2]
+		peaks = peaks[ind][ind2]
+		width = rips[ind][ind2] - lips[ind][ind2]
 
-		print(x[peaks])
+		j = 0
+		for i in range(len(names)):
+			if Peaks[i] is None:
+				Peaks[i] = peaks[j]
+				Widths[i] = width[j]
+				j = j + 1
 
 		pall = []
 		blall = []
 		brall = []
 
-		for i,p in enumerate(peaks):
-			bd = bound(y,p)
+		for peak,width in zip(Peaks,Widths):
+			bd = bound(y,peak)
 			for k in range(n):
 				if k < bd[0] or k > bd[1]:
 					w[k] = 0
 				else:
 					w[k] = 1
 			
-			p0 = [peaks[i],y[peaks[i]],width[i],0]
-			p0l = [peaks[i]-width[i],0.5*y[peaks[i]],0.5*width[i],-10]
-			p0r = [peaks[i]+width[i],1.5*y[peaks[i]],1.5*width[i],10]
+			p0 = [peak,y[peak],width,0]
+			p0l = [peak-width,0.5*y[peak],0.5*width,-10]
+			p0r = [peak+width,1.5*y[peak],1.5*width,10]
 			
-			pout = (least_squares(
+			pout = (
+				least_squares(
 					AsymmetricGaussianModel.errorAGM,
 					x0=p0,
 					x_scale='jac',
@@ -200,7 +222,7 @@ class Standard:
 		
 		for i in range(len(peaks)):
 			pout = pallout[i*4:(i+1)*4]
-			self.appendChem(nameConcs[i].name,ConcParam(nameConcs[i].conc,pout))
+			self.appendChem(names[i],concs[i],pout)
 
 	def errorAll(self,p,x,y):
 		err = 0
@@ -220,7 +242,7 @@ class Standard:
 		os.makedirs(self.args.plotParamsDir,exist_ok=True)
 		cmax = 0
 		for chem in self.chems.values():
-			c = chem.cmax()
+			c = chem.concs[0]
 			if c > cmax:
 				cmax = c
 			
@@ -229,19 +251,24 @@ class Standard:
 			fig,ax = plt.subplots(2,2)
 			label = ['x0','ph','w','sk']
 
+			x = chem.concs
+			x2 = range(0,np.floor(cmax).astype(int),1)
+
 			for j in range(4):
-				x = [p.conc for p in chem.concParams]
-				y = [p.param[j] for p in chem.concParams]
-				x2 = range(0,np.floor(cmax).astype(int),1)
+				y = chem.params[:,j]
 				fit = chem.fit[j]
 				
 				ax[j//2][j%2].plot(x,y,'bo')
 				ax[j//2][j%2].plot(x2,np.polyval(fit,x2),'r-')
 				ax[j//2][j%2].set_title(label[j])
-				ax[j//2][j%2].set_xlim(0,chem.concParams[0].conc)
+				ax[j//2][j%2].set_xlim(0,chem.concs[0])
 
 				fig.savefig(file)
 				plt.close(fig)
+			
+		fig,ax = plt.subplots()
+		self.checkParams(ax)
+		fig.savefig(file)
 
 	def saveParams(self):
 		print(self.args.paramFile)
@@ -249,11 +276,11 @@ class Standard:
 			s = []
 			for chem in self.chems.values():
 				row = [','.join([chem.name,'x0','ph','w','sk'])]
-				for p in chem.concParams:
-					row.append(str(p))
+				for conc,param in zip(chem.concs,chem.params):
+					row.append(','.join([str(l) for l in np.append([conc],param)]))
 				s.append('\n'.join(row))
 			
-			f.write('\n'.join(s))
+			f.write('\n\n'.join(s))
 		
 	def loadParams(self):
 		self.dir = os.path.dirname(self.args.paramFile)
@@ -262,15 +289,18 @@ class Standard:
 		
 		for s in strlist:
 			table = readcsvstr(s)
-
 			for i in range(1,len(table)):
-				self.appendChem(table[0][0],ConcParam(float(table[i][0]),np.asarray(table[i][1:],dtype=float)))
+				self.appendChem(table[0][0],float(table[i][0]),np.asarray(table[i][1:],dtype=float))
 			
 		for chem in self.chems.values():
-			chem.finalize(self.args.interpolationOrder)
+			chem.finalize()
+			for i,p in enumerate(chem.params):
+				chem.params[i,0] = p[0]*self.args.shift
 
-	def checkParams(self):
-		fig,ax = plt.subplots()
+	def checkParams(self,ax=None):
+		if not ax:
+			show = True
+			fig,ax = plt.subplots()
 
 		if self.data:
 			for data in self.data:
@@ -279,7 +309,6 @@ class Standard:
 				ax.plot(x,y,'r',alpha=0.5)
 
 			x = self.data[0][:,0]
-			y = self.data[0][:,1]
 		else:
 			x = np.arange(4801)
 
@@ -293,7 +322,7 @@ class Standard:
 		clist = ['b','g','c','m','y','k']
 		
 		for i,chem in enumerate(self.chems.values()):
-			cmax = chem.concParams[0].conc
+			cmax = chem.concs[0]
 			ind = np.floor(chem.pos).astype(int)
 
 			for j in range(10):
@@ -301,12 +330,10 @@ class Standard:
 				p = chem.interpolate(c)
 				ax.plot(x,AsymmetricGaussianModel.AGM(xi,*p),color=clist[i%len(clist)],alpha=0.2)
 			if 0 < ind and ind < len(x):
-				if self.data:
-					ax.text(x[ind],y[ind],chem.name)
-				else:
-					ax.text(x[ind],p[1],chem.name)
+				ax.text(x[ind],chem.params[0][1],chem.name)
 		
-		plt.show()
+		if show:
+			plt.show()
 	
 	def checkStandards(self):
 		fig,ax = plt.subplots()
@@ -325,21 +352,10 @@ class Standard:
 	def print(self):
 		for chem in self.chems.values():
 			chem.print()
-						
-	def interpolate(self,chem,conc):
-		#return np.array([self.params[ind][0][1](conc),self.params[ind][0][2](conc),self.params[ind][0][3](conc),self.params[ind][0][4](conc)])
-		return np.array(
-			[
-				np.polyval(self.chems[chem].fit[0],conc),
-				np.polyval(self.chems[chem].fit[1],conc),
-				np.polyval(self.chems[chem].fit[2],conc),
-				np.polyval(self.chems[chem].fit[3],conc),
-			]
-		)
 
 	def eval(self,data,ax):
 		chemlen = len(self.chems)
-		concs = np.zeros(chemlen+1)
+		concs = np.zeros(chemlen)
 		
 		x = data[:,0]
 		y = data[:,1]
@@ -354,42 +370,56 @@ class Standard:
 		if self.args.peakExclude is not None:
 			for lim in self.args.peakExclude:
 				mask[np.where(np.logical_and(lim[0] < x, x < lim[1]))] = 0
-		
-		#print(mask)
 
 		#initial guess
 		for i,chem in enumerate(self.chems.values()):
-			c = (data[np.floor(chem.pos).astype(int),1] / chem.concParams[0].param[1]) * chem.concParams[0].conc
+			c = (data[np.floor(chem.pos).astype(int),1] / chem.params[0][1]) * chem.concs[0]
 			if c > 0:
 				concs[i] = c
 			else:
 				concs[i] = 0
 
-		#add initial guess of x shift to the last of concs
-		concs[-1] = 0
 		bl = []
 		br = []
 
-		for c in concs[:-1]:
+		for c in concs:
 			bl.append(0)
 			br.append(np.inf)
 		
-		bl.append(-float(self.args.shiftTolerance))
-		br.append(float(self.args.shiftTolerance))
+		if self.args.shiftTolerance is not None and self.args.shift == 1:
+			concs = np.append(concs,[0])
+			bl.append(-float(self.args.shiftTolerance))
+			br.append(float(self.args.shiftTolerance))
+			cout = (least_squares(self.errorShift,x0=concs,x_scale='jac',jac=self.jacShift,bounds=(bl,br),args=(xi,y*mask))).x
+			if ax is not None:
+				ax.plot(x,self.modelShift(xi,cout),'red',alpha=0.5,linestyle='dashed')
+			self.args.shift = np.exp(cout[-1])
+			self.applyShift()
+			cout = cout[:-1]
 
-		cout = (least_squares(self.error,x0=concs,x_scale='jac',jac=self.jac,bounds=(bl,br),args=(xi,y*mask))).x
-		if ax is not None:
-			ax.plot(x,self.model(x,cout),'red',alpha=0.5,linestyle='dashed')
-			#ax.plot(data[:,0],self.model(x,1.5*cout),'red',alpha=0.5,linestyle='dashed')
+		else:
+			cout = (least_squares(self.error,x0=concs,x_scale='jac',jac=self.jac,bounds=(bl,br),args=(xi,y*mask))).x
+			if ax is not None:
+				ax.plot(x,self.model(xi,cout),'red',alpha=0.5,linestyle='dashed')
 		
-		#print("x shift : " + str(cout[-1]))
-		return cout[:-1]
-		#ax.plot(data[:,0],y,'r',alpha=0.5)
+		return cout
 	
 	def error(self,concs,x,y):
 		return y - self.model(x,concs)
+	
+	def errorShift(self,concs,x,y):
+		return y - self.modelShift(x,concs)
+
 			
 	def model(self,x,concs):
+		ret = 0
+		for i,chem in enumerate(self.chems.values()):
+			p = chem.interpolate(concs[i])
+			ret += AsymmetricGaussianModel.AGM(x,*p)
+		
+		return ret
+
+	def modelShift(self,x,concs):
 		ret = 0
 		for i,chem in enumerate(self.chems.values()):
 			p = chem.interpolate(concs[i])
@@ -397,20 +427,25 @@ class Standard:
 			ret += AsymmetricGaussianModel.AGM(x,*p)
 		
 		return ret
-		
+	
 	def jac(self,concs,x,y):
+		#dc = 0.01
+		res=[]
+		for i,chem in enumerate(self.chems.values()):
+			p = chem.interpolate(concs[i])
+			dpdc = chem.dpdc(concs[i])
+			res.append(np.dot(AsymmetricGaussianModel.jacAGM(p,x,y),dpdc))
+
+		return - np.transpose(res)
+		
+	def jacShift(self,concs,x,y):
 		#dc = 0.01
 		res=[]
 		las=np.zeros(len(x))
 		for i,chem in enumerate(self.chems.values()):
 			p = chem.interpolate(concs[i])
 			p[0] *= np.exp(concs[-1])
-			dpdc = [
-				2*concs[i]*chem.fit[0][-3] + chem.fit[0][-2],
-				2*concs[i]*chem.fit[1][-3] + chem.fit[1][-2],
-				2*concs[i]*chem.fit[2][-3] + chem.fit[2][-2],
-				2*concs[i]*chem.fit[3][-3] + chem.fit[3][-2]
-			]
+			dpdc = chem.dpdc(concs[i])
 			res.append(np.dot(AsymmetricGaussianModel.jacAGM(p,x,y),dpdc))
 			las += np.dot(AsymmetricGaussianModel.jacAGM(p,x,y),[1,0,0,0])
 		# effect of x shift
@@ -438,6 +473,13 @@ class Standard:
 				peak_set.add(i)
 		
 		return np.array(sorted(list(peak_set)))
+
+	def applyShift(self):
+		print('set x shift multiplier : ' + str(self.args.shift))
+		for chem in self.chems.values():
+			for i,p in enumerate(chem.params):
+				chem.params[i,0] = p[0]*self.args.shift
+
 
 def bound(ylist, peak):
 	xmin = 0
@@ -496,3 +538,16 @@ def readcsvstr(s):
 			continue
 		data.append(r.split(','))
 	return np.asarray(data,dtype=object)
+
+def complement(e_all, *args):
+    e_all = set(e_all)
+    for e in args:
+        e_all -= set(e)
+    return np.asarray(list(e_all))
+
+def tofloat(s):
+	try:
+		f = float(s)
+	except:
+		f = 0
+	return f
