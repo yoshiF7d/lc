@@ -108,18 +108,18 @@ if args.standardFile is not None:
 	stdt.checkParams()
 	if args.paramFile is not None:
 		stdt.saveParams()
-	if args.plotParamsDir is not None:
-		stdt.plotParams()
-		exit()
 	if args.checkStandards:
 		stdt.checkStandards()
+		exit()
+	if not args.filein and args.plotDir is not None:
+		stdt.plotParams()
 		exit()
 elif args.paramFile is not None:
 	stdt.loadParams()
 	if args.checkParams:
 		stdt.checkParams()
 		exit()
-	if args.plotParamsDir is not None:
+	if not args.filein and args.plotDir is not None:
 		stdt.plotParams()
 		exit()
 elif not args.filein:

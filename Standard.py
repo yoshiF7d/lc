@@ -41,9 +41,9 @@ class Chem:
 		inds = (-self.concs).argsort()
 		self.concs = self.concs[inds]
 		self.params = self.params[inds]
-
+		self.fit = []
 		self.fit.append(np.polyfit(self.concs,self.params[:,0],2))
-		self.fit.append(np.polyfit(np.append([0],self.concs),np.append([0],self.params[:,1]),1))
+		self.fit.append(np.polyfit(np.append([0],self.concs),np.append([0],self.params[:,1]),2))
 		self.fit.append(np.polyfit(self.concs,self.params[:,2],2))
 		self.fit.append(np.polyfit(self.concs,self.params[:,3],2))		
 
@@ -63,7 +63,7 @@ class Chem:
 	def dpdc(self,conc):
 		return [
 			2*conc*self.fit[0][0] + self.fit[0][1],
-			self.fit[1][0],
+			2*conc*self.fit[1][0] + self.fit[1][1],
 			2*conc*self.fit[2][0] + self.fit[2][1],
 			2*conc*self.fit[3][0] + self.fit[3][1]
 		]
@@ -186,7 +186,7 @@ class Standard:
 		blall = []
 		brall = []
 
-		print(tabulate([[file] + [x[p] for p in Peaks]],tablefmt="plain",floatfmt=".1f"))
+		print(tabulate([[file] +[f'stdev : {stdev:.1g}'] + ['peaks :'] + [f'({x[p]:.1f} {y[p]:.2g})' for p in Peaks]],tablefmt="plain",floatfmt=".1f"))
 
 		for peak,width in zip(Peaks,Widths):
 			bd = bound(y,peak)
@@ -240,7 +240,7 @@ class Standard:
 		return -np.hstack(j)
 
 	def plotParams(self):
-		os.makedirs(self.args.plotParamsDir,exist_ok=True)
+		os.makedirs(self.args.plotDir,exist_ok=True)
 		cmax = 0
 		for chem in self.chems.values():
 			c = chem.concs[0]
@@ -248,7 +248,7 @@ class Standard:
 				cmax = c
 			
 		for chem in self.chems.values():
-			file = os.path.join(self.args.plotParamsDir,chem.name + '.png')
+			file = os.path.join(self.args.plotDir,chem.name + '.png')
 			fig,ax = plt.subplots(2,2)
 			label = ['x0','ph','w','sk']
 
@@ -268,7 +268,7 @@ class Standard:
 			
 		fig,ax = plt.subplots()
 		self.checkParams(ax)
-		fig.savefig(os.path.join(self.args.plotParamsDir,'fit.png'))
+		fig.savefig(os.path.join(self.args.plotDir,'fit.png'))
 
 	def saveParams(self):
 		print(self.args.paramFile)
@@ -392,16 +392,15 @@ class Standard:
 			bl.append(-float(self.args.shiftTolerance))
 			br.append(float(self.args.shiftTolerance))
 			cout = (least_squares(self.errorShift,x0=concs,x_scale='jac',jac=self.jacShift,bounds=(bl,br),args=(xi,y*mask))).x
-			if ax is not None:
-				ax.plot(x,self.modelShift(xi,cout),'red',alpha=0.5,linestyle='dashed')
 			self.args.shift = np.exp(cout[-1])
 			self.applyShift()
-			cout = cout[:-1]
-
-		else:
-			cout = (least_squares(self.error,x0=concs,x_scale='jac',jac=self.jac,bounds=(bl,br),args=(xi,y*mask))).x
-			if ax is not None:
-				ax.plot(x,self.model(xi,cout),'red',alpha=0.5,linestyle='dashed')
+			bl = bl[:-1]
+			br = br[:-1]
+			concs = concs[:-1]
+		
+		cout = (least_squares(self.error,x0=concs,x_scale='jac',jac=self.jac,bounds=(bl,br),args=(xi,y*mask))).x
+		if ax is not None:
+			ax.plot(x,self.model(xi,cout),'red',alpha=0.5,linestyle='dashed')
 		
 		return cout
 	
@@ -480,6 +479,7 @@ class Standard:
 		for chem in self.chems.values():
 			for i,p in enumerate(chem.params):
 				chem.params[i,0] = p[0]*self.args.shift
+			chem.finalize()
 
 
 def bound(ylist, peak):
