@@ -104,10 +104,12 @@ class Standard:
 		
 		if not table[-1,0].endswith('.txt'):
 			pos = np.asarray(table[-1,1:],dtype=float)
+			lst = table[1:-1]
 		else:
 			pos = self.getpos(names)
+			lst = table[1:]
 
-		for s in table[1:]:
+		for s in lst:
 			file = s[0]
 			data = loader(os.path.join(dir,file))
 			y = data[:,1]
@@ -154,7 +156,7 @@ class Standard:
 
 		for k,p in enumerate(pos):
 			if p:
-				print(names[k])
+				#print(names[k])
 				i = find_nearest(x[peaks],p)
 				Inds.append(i)
 				Peaks.append(peaks[i])
@@ -165,13 +167,13 @@ class Standard:
 		
 		cp = len(Inds) #count of peaks with known pos 
 		cuk = len(names) - cp #count of peaks with unknown pos
-		
+
 		ind = complement(inds,Inds)
 		peaks,rips,lips = peaks[ind],rips[ind],lips[ind]
 
 		ind = pick(y[peaks],cuk)
 		ind2 = pick(peaks[ind],len(ind))[::-1]
-			
+		
 		peaks = peaks[ind][ind2]
 		width = rips[ind][ind2] - lips[ind][ind2]
 
@@ -221,7 +223,7 @@ class Standard:
 				least_squares(self.errorAll,jac=self.jacAll,bounds=(blall,brall),x0=pall,args=(xi,y))
 			).x
 		
-		for i in range(len(peaks)):
+		for i in range(len(Peaks)):
 			pout = pallout[i*4:(i+1)*4]
 			self.appendChem(names[i],concs[i],pout)
 
@@ -397,7 +399,7 @@ class Standard:
 			bl = bl[:-1]
 			br = br[:-1]
 			concs = concs[:-1]
-		
+
 		cout = (least_squares(self.error,x0=concs,x_scale='jac',jac=self.jac,bounds=(bl,br),args=(xi,y*mask))).x
 		if ax is not None:
 			ax.plot(x,self.model(xi,cout),'red',alpha=0.5,linestyle='dashed')
