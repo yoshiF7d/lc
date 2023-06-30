@@ -45,16 +45,23 @@ def loadData(file,args):
 	#		return None
 
 	data = lcdata.query(args.header)
+	
 	if args.polarity:
 		data[:,1] *= -1
 	
-	if 4801 != len(data):
-		print('data size changed from ' +  str(len(data)) + ' to 4801')
+	n = len(data)
+	tmax = data[-1,0]
+
+	if not np.isclose(tmax/(n-1),1/120):
+		nn = tmax * 120 + 1
+		if not args.dataSizeChangedMessage:
+			args.dataSizeChangedMessage = True
+			print('data size changed from ' +  str(n) + ' to ' + str(nn))
 		n = len(data)
-		x = np.interp(np.linspace(0,n,4801),np.arange(n),data[:,0])
-		y = np.interp(np.linspace(0,n,4801),np.arange(n),data[:,1])
+		x = np.interp(np.linspace(0,n,nn),np.arange(n),data[:,0])
+		y = np.interp(np.linspace(0,n,nn),np.arange(n),data[:,1])
 		data = np.transpose([x,y])
-	
+
 	return data
 
 parser = argparse.ArgumentParser(description='LC processor')
@@ -78,8 +85,11 @@ parser.add_argument('--peakExclude',help='set regions to exclude for peak detect
 parser.add_argument('--polarity',action='store_true',help='multiply -1 to the data')
 parser.add_argument('--shiftTolerance',type=float,help='set x shift tolerance')
 parser.add_argument('--shift',default=1,type=float,help='set x shift multiplier')
+parser.add_argument('--noTotalFit',action='store_true',help='no total fit')
+parser.add_argument('--gaussianFit',action='store_true',help='fit with multiple gaussins')
 
 args = parser.parse_args()
+args.dataSizeChangedMessage = False
 
 if args.header == 'A1':
 	args.header = HEADER_A1

@@ -37,7 +37,6 @@ class LCData():
 				return c.name
 		return None
 
-
 class LCSubData():
 	def __init__(self,strin):
 		self.name = None

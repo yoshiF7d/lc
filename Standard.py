@@ -28,6 +28,7 @@ class Chem:
 		self.concs = [conc]
 		self.params = [param]
 		self.fit = []
+		self.areaFit = None
 		self.pos = param[0]
 	
 	def append(self,conc,param):
@@ -45,7 +46,9 @@ class Chem:
 		self.fit.append(np.polyfit(self.concs,self.params[:,0],2))
 		self.fit.append(np.polyfit(np.append([0],self.concs),np.append([0],self.params[:,1]),2))
 		self.fit.append(np.polyfit(self.concs,self.params[:,2],2))
-		self.fit.append(np.polyfit(self.concs,self.params[:,3],2))		
+		self.fit.append(np.polyfit(self.concs,self.params[:,3],2))
+		areas = list(map(lambda p : AsymmetricGaussianModel.areaAGM(*p),self.params))			
+		self.areaFit = np.polyfit(areas,self.concs,1)
 
 	def interpolate(self,conc):
 		return np.array(
@@ -67,6 +70,9 @@ class Chem:
 			2*conc*self.fit[2][0] + self.fit[2][1],
 			2*conc*self.fit[3][0] + self.fit[3][1]
 		]
+	
+	def concFromArea(self,area):
+		return np.polyval(self.areaFit,area)
 
 	def print(self):
 		print(self.name)
@@ -154,6 +160,8 @@ class Standard:
 		Peaks = []
 		Widths = []
 
+		#peak with known pos is filled in the list first. None is used as a place holder for peaks with unknown pos.
+
 		for k,p in enumerate(pos):
 			if p:
 				#print(names[k])
@@ -168,14 +176,18 @@ class Standard:
 		cp = len(Inds) #count of peaks with known pos 
 		cuk = len(names) - cp #count of peaks with unknown pos
 
-		ind = complement(inds,Inds)
-		peaks,rips,lips = peaks[ind],rips[ind],lips[ind]
+		ind = complement(inds,Inds) #ind of detected peaks minus known peaks
+		peaks,rips,lips = peaks[ind],rips[ind],lips[ind] #detected peaks minus known peaks
 
-		ind = pick(y[peaks],cuk)
-		ind2 = pick(peaks[ind],len(ind))[::-1]
+		# selection & ordering
+		# select by height order
+		# sort by x order
+
+		ind = pick(y[peaks],cuk) #pick cuk peaks from detected peaks in decending height order 
+		ind2 = pick(peaks[ind],len(ind))[::-1] #reorder the previous list in increasing x order
 		
-		peaks = peaks[ind][ind2]
-		width = rips[ind][ind2] - lips[ind][ind2]
+		peaks = peaks[ind][ind2] #apply the selection and ordring to peaks list
+		width = rips[ind][ind2] - lips[ind][ind2] #apply the selection and ordering to the width list
 
 		j = 0
 		for i in range(len(names)):
@@ -377,6 +389,8 @@ class Standard:
 		#initial guess
 		for i,chem in enumerate(self.chems.values()):
 			c = (data[np.floor(chem.pos).astype(int),1] / chem.params[0][1]) * chem.concs[0]
+			if self.args.noTotalFit:
+				c = (least_squares(self.errorSingle,x0=[c],x_scale='jac',jac=self.jacSingle,bounds=(0,np.inf),args=(xi,y*mask,chem))).x[0]
 			if c > 0:
 				concs[i] = c
 			else:
@@ -398,11 +412,34 @@ class Standard:
 			self.applyShift()
 			bl = bl[:-1]
 			br = br[:-1]
-			concs = concs[:-1]
+			concs = cout[:-1]
+		
+		if self.args.gaussianFit:
+			params = []
+			for i,chem in enumerate(self.chems.values()):
+				params.append(chem.interpolate(concs[i]))
+			
+			params = np.asarray(params).flatten()
 
-		cout = (least_squares(self.error,x0=concs,x_scale='jac',jac=self.jac,bounds=(bl,br),args=(xi,y*mask))).x
+			blall = params - 0.5*np.abs(params)
+			brall = params + 0.5*np.abs(params)
+			
+			params = (least_squares(self.errorAll,x0=params,x_scale='jac',jac=self.jacAll,bounds=(blall,brall),args=(xi,y*mask))).x
+
+			for i,chem in enumerate(self.chems.values()):
+				concs[i] = chem.concFromArea(AsymmetricGaussianModel.areaAGM(*params[4*i:4*(i+1)]))
+			
+			cout = concs
+
+		elif self.args.noTotalFit:
+			cout = concs
+		else:
+			cout = (least_squares(self.error,x0=concs,x_scale='jac',jac=self.jac,bounds=(bl,br),args=(xi,y*mask))).x
 		if ax is not None:
-			ax.plot(x,self.model(xi,cout),'red',alpha=0.5,linestyle='dashed')
+			if self.args.gaussianFit:
+				ax.plot(x,self.modelGaussian(xi,params),'red',alpha=0.5,linestyle='dashed')
+			else:
+				ax.plot(x,self.model(xi,cout),'red',alpha=0.5,linestyle='dashed')
 		
 		return cout
 	
@@ -411,7 +448,12 @@ class Standard:
 	
 	def errorShift(self,concs,x,y):
 		return y - self.modelShift(x,concs)
-
+	
+	def errorSingle(self,conc,x,y,chem):
+		return y - self.modelSingle(x,conc,chem)
+	
+	def errorGaussian(self,params,x,y):
+		return y - self.modelGaussian(x,params)
 			
 	def model(self,x,concs):
 		ret = 0
@@ -430,6 +472,16 @@ class Standard:
 		
 		return ret
 	
+	def modelSingle(self,x,conc,chem):
+		p = chem.interpolate(conc)
+		return AsymmetricGaussianModel.AGM(x,*p)
+	
+	def modelGaussian(self,x,params):
+		ret = 0
+		for i in range(0,len(params),4):
+			ret += AsymmetricGaussianModel.AGM(x,params[i],params[i+1],params[i+2],params[i+3])
+		return ret
+
 	def jac(self,concs,x,y):
 		#dc = 0.01
 		res=[]
@@ -454,6 +506,24 @@ class Standard:
 		res.append(las)
 
 		return - np.transpose(res)
+
+	def jacSingle(self,conc,x,y,chem):
+		p = chem.interpolate(conc)
+		dpdc = chem.dpdc(conc)
+		return - np.dot(AsymmetricGaussianModel.jacAGM(p,x,y),dpdc)
+
+	def jecGaussian(self,params,x,y):
+		res = []
+		for i in range(0,len(params),3):
+			x0 = params[i]
+			a = params[i+1]
+			s = params[i+2]
+			u = (x-x0)/s
+			j1 = 2*a*np.exp(-u*u)*u/s
+			j2 = 2*a*np.exp(-u*u)*u*u/s
+			j3 = np.exp(-u*u)
+			res.append(np.transpose([j1,j2,j3]))
+		return res
 
 	def peakInclude(self,lst):
 		peak_set = set()

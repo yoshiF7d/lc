@@ -21,5 +21,7 @@ def jacAGM(p,x,y):
 	j1 = f
 	j2 = 2*e*h
 	j3 = 2*e*g*p[1]
-
 	return np.transpose([j0,j1,j2,j3]*np.exp(-e*e))
+
+def areaAGM(x0,ph,w,sk):
+	return ph*np.sqrt(w*np.pi)
