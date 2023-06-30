@@ -72,7 +72,7 @@ class Chem:
 		]
 	
 	def concFromArea(self,area):
-		return np.polyval(self.areaFit,area)
+		return np.maximum(np.polyval(self.areaFit,area),0)
 
 	def print(self):
 		print(self.name)
@@ -414,7 +414,7 @@ class Standard:
 			br = br[:-1]
 			concs = cout[:-1]
 		
-		if self.args.gaussianFit:
+		if self.args.area:
 			params = []
 			for i,chem in enumerate(self.chems.values()):
 				params.append(chem.interpolate(concs[i]))
@@ -436,7 +436,7 @@ class Standard:
 		else:
 			cout = (least_squares(self.error,x0=concs,x_scale='jac',jac=self.jac,bounds=(bl,br),args=(xi,y*mask))).x
 		if ax is not None:
-			if self.args.gaussianFit:
+			if self.args.area:
 				ax.plot(x,self.modelGaussian(xi,params),'red',alpha=0.5,linestyle='dashed')
 			else:
 				ax.plot(x,self.model(xi,cout),'red',alpha=0.5,linestyle='dashed')

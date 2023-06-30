@@ -86,7 +86,7 @@ parser.add_argument('--polarity',action='store_true',help='multiply -1 to the da
 parser.add_argument('--shiftTolerance',type=float,help='set x shift tolerance')
 parser.add_argument('--shift',default=1,type=float,help='set x shift multiplier')
 parser.add_argument('--noTotalFit',action='store_true',help='no total fit')
-parser.add_argument('--gaussianFit',action='store_true',help='fit with multiple gaussins')
+parser.add_argument('--area',action='store_true',help='calculate concentration from peak area')
 
 args = parser.parse_args()
 args.dataSizeChangedMessage = False
